@@ -18,7 +18,7 @@ Re-recording after a UI change is one command per clip — the edit is generated
 ## Install
 
 ```bash
-git clone <this-repo> && cp -R TVideo/tvideo ~/.claude/skills/tvideo
+git clone https://github.com/JiramedFirst/TVideo && cp -R TVideo/tvideo ~/.claude/skills/tvideo
 ```
 
 Requirements: Node ≥ 20, ffmpeg, and Hyperframes skills (`npx hyperframes skills update general-video`). Claude checks these for you in its first step.
