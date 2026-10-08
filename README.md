@@ -1,5 +1,7 @@
 # TVideo
 
+**English** · [ภาษาไทย](README.th.md)
+
 [![smoke](https://github.com/JiramedFirst/TVideo/actions/workflows/smoke.yml/badge.svg)](https://github.com/JiramedFirst/TVideo/actions/workflows/smoke.yml)
 
 Claude Code plugin that makes tutorial videos for a web app. It records the real screens with Playwright, with a
@@ -66,4 +68,4 @@ node tests/smoke.mjs
 
 ## License
 
-MIT. The bundled font (OFL) and music (CC BY 4.0) keep their own licenses: see [THIRD_PARTY.md](THIRD_PARTY.md).
+MIT. The bundled font (OFL), music (CC BY 4.0) and GSAP keep their own licenses: see [THIRD_PARTY.md](THIRD_PARTY.md).
