@@ -1,0 +1,43 @@
+name: Bug report
+description: Something in recording, editing or rendering went wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [troubleshooting.md](https://github.com/JiramedFirst/TVideo/blob/main/plugin/skills/tvideo/references/troubleshooting.md) first — it lists the failures already seen and their causes.
+        Don't paste passwords, OTPs or screenshots with real customer data.
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Where did it fail?
+      options:
+        - Install / preflight
+        - Rehearsal or recording (Playwright)
+        - Import / new-clip
+        - Build (build.mjs) or hyperframes check
+        - Render
+        - Narration (voice.mjs)
+        - The video looks wrong (ring, still, caption, timing)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Error output
+      description: The exact error text, or a frame of the wrong-looking moment.
+      render: text
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: TVideo, `node -v`, `npx hyperframes --version`, `ffmpeg -version` (first line), OS
+      placeholder: TVideo 1.1.0 · Node 22.20 · Hyperframes 0.8.141 · ffmpeg 7.1 · macOS 15
+    validations:
+      required: true
