@@ -20,8 +20,11 @@ const arg = (name, def) => {
 const VOICE = arg('voice');
 const LANG = arg('lang', 'en');
 if (!VOICE) throw new Error('--voice <id> is required (list voices: see references/narration.md).');
-const TTS = [join(homedir(), '.claude/skills/media-use/audio/scripts/heygen-tts.mjs'), join(homedir(), '.agents/skills/media-use/audio/scripts/heygen-tts.mjs')].find(existsSync);
-if (!TTS) throw new Error('heygen-tts.mjs not found — run: npx hyperframes skills update media-use');
+const tried = [process.env.TV_MEDIA_USE_DIR, join(homedir(), '.claude/skills/media-use'), join(homedir(), '.agents/skills/media-use')]
+  .filter(Boolean)
+  .map((d) => join(d, 'audio/scripts/heygen-tts.mjs'));
+const TTS = tried.find(existsSync);
+if (!TTS) throw new Error(`heygen-tts.mjs not found. Tried:\n  ${tried.join('\n  ')}\nRun: npx hyperframes skills update media-use, or set TV_MEDIA_USE_DIR.`);
 
 const plan = JSON.parse(readFileSync('plan.json', 'utf8'));
 const lines = [
