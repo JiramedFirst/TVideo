@@ -18,6 +18,8 @@ Plugin สำหรับ Claude Code ที่ทำวิดีโอสอน
 /plugin install tvideo@tvideo
 ```
 
+อยากได้คู่มือเป็นสไลด์ (PPTX/PDF) แทนวิดีโอ ใช้ [MSlides](https://github.com/JiramedFirst/MSlides) ตัวพี่น้องกัน
+
 ## ใช้งาน
 
 เปิดแอป (staging หรือในเครื่อง) ด้วยบัญชีเดโม แล้วสั่ง Claude เช่น

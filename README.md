@@ -19,6 +19,8 @@ to press, click sounds, and music. The result is a 1080p MP4 per task.
 /plugin install tvideo@tvideo
 ```
 
+Want a slide-deck manual (PPTX/PDF) instead of a video? See the sibling plugin [MSlides](https://github.com/JiramedFirst/MSlides).
+
 ## Use
 
 Run your app (staging or local) with a demo account, then ask Claude:
