@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test';
+import type { BrowserContext, Locator, Page } from '@playwright/test';
 
 /**
  * A visible mouse for tutorial recordings. Playwright's video has no cursor, so a
@@ -6,12 +6,13 @@ import type { Locator, Page } from '@playwright/test';
  * real (Playwright-driven) mouse plus a ripple on each press, and `tap`/`typeInto`
  * glide to a control before using it so the eye can follow.
  *
- * Installed with addInitScript, so it is rebuilt on every navigation; the last
- * position lives in sessionStorage so the arrow doesn't jump to a corner after a
- * page change.
+ * Installed with addInitScript on the CONTEXT, so it is rebuilt on every
+ * navigation and also appears in popups / new tabs; the last position lives in
+ * sessionStorage so the arrow doesn't jump to a corner after a page change.
+ * (A popup still records to its own video file — keep tutorial flows in one tab.)
  */
-export async function installCursor(page: Page, accent = '#93d600'): Promise<void> {
-  await page.addInitScript((color: string) => {
+export async function installCursor(context: BrowserContext, accent = '#93d600'): Promise<void> {
+  await context.addInitScript((color: string) => {
     const KEY = 'tvideo.cursor';
     const mount = () => {
       const arrow = document.createElement('div');
@@ -57,27 +58,71 @@ export async function installCursor(page: Page, accent = '#93d600'): Promise<voi
 /** Rehearsal runs (TV_REHEARSE=1) skip the glides and pauses: they only prove every selector resolves. */
 export const REHEARSE = process.env.TV_REHEARSE === '1';
 
-/** Glide the mouse to the centre of `target` (steps keep the motion visible). */
-export async function pointAt(page: Page, target: Locator): Promise<void> {
-  await target.scrollIntoViewIfNeeded();
-  if (REHEARSE) return;
-  const box = await target.boundingBox();
+/** A control's box in recording pixels, centre-based — the same shape as plan.json's `ring`. */
+export type Box = { x: number; y: number; w: number; h: number };
+
+/**
+ * Glide the mouse to the centre of `target` and return where it sits on screen.
+ * A target outside the viewport is smooth-scrolled into view first: Playwright's
+ * own auto-scroll is instant and reads as a jump cut. Returns null in rehearsal.
+ */
+export async function pointAt(page: Page, target: Locator): Promise<Box | null> {
+  if (REHEARSE) {
+    await target.scrollIntoViewIfNeeded();
+    return null;
+  }
+  let box = await target.boundingBox();
+  const vp = page.viewportSize();
+  const inView = box && vp && box.x >= 0 && box.y >= 0 && box.x + box.width <= vp.width && box.y + box.height <= vp.height;
+  if (!inView) {
+    // scrollIntoView picks whichever ancestor actually scrolls (often an app
+    // shell's <main>, not the window); 900 ms lets the smooth scroll finish.
+    await target.evaluate((el) => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    await page.waitForTimeout(900);
+    box = await target.boundingBox();
+  }
   if (!box) throw new Error('pointAt: target has no bounding box (not visible?)');
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 25 });
   await page.waitForTimeout(250);
+  // Re-measure for the log: a control in an opening drawer/modal may still have
+  // been animating at the first read; this is where it sits when clicked.
+  box = (await target.boundingBox()) ?? box;
+  const r = Math.round;
+  return { x: r(box.x + box.width / 2), y: r(box.y + box.height / 2), w: r(box.width), h: r(box.height) };
 }
 
 /**
- * Wall-clock time of every `tap`, so the editor can lay a click sound exactly on
- * each on-screen press. createTimeline resets it and saves it relative to t0.
+ * Every `tap`: wall-clock time, the control's box (so the editor can ring it
+ * without anyone measuring pixels) and `gone` — the control vanished after the
+ * click (navigation, a closed menu), which tells the editor to show the frame
+ * BEFORE the click (holdFirst). createTimeline resets these; save() awaits
+ * `pendingClicks` so every `gone` is settled before clicks.json is written.
  */
-export const clickLog: number[] = [];
+export type Click = { t: number; box?: Box; gone?: boolean };
+export const clickLog: Click[] = [];
+export const pendingClicks: Promise<void>[] = [];
+// When the next tap began, per click: a control that disappears only after that
+// (a text field, once the NEXT tap navigates away) wasn't removed by its own click.
+const nextTapAt = new WeakMap<Click, number>();
 
 /** Glide to `target`, pause so the viewer sees where, then click it. */
 export async function tap(page: Page, target: Locator): Promise<void> {
-  await pointAt(page, target);
-  clickLog.push(Date.now());
+  const prev = clickLog.at(-1);
+  if (prev && !nextTapAt.has(prev)) nextTapAt.set(prev, Date.now());
+  const box = await pointAt(page, target);
+  const click: Click = { t: Date.now(), ...(box && { box }) };
+  clickLog.push(click);
   await target.click();
+  // Not awaited: a control that stays (a text field) would otherwise stall every
+  // tap for the whole timeout. 3 s covers a navigation or a menu closing.
+  // ponytail: a navigation slower than 3 s, or one landing on an identical
+  // control (a wizard's "Next"), reads as not gone — set holdFirst in plan.json.
+  pendingClicks.push(
+    target.waitFor({ state: 'hidden', timeout: 3000 }).then(
+      () => { if (Date.now() <= (nextTapAt.get(click) ?? Infinity)) click.gone = true; },
+      () => {},
+    ),
+  );
 }
 
 /** Glide to a field, click into it, and type at a readable pace. */

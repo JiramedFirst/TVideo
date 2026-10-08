@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "postinstall": "playwright install chromium",
     "rehearse": "TV_REHEARSE=1 playwright test",
     "record": "playwright test"
   },

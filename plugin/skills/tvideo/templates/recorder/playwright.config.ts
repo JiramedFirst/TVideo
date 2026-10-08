@@ -9,6 +9,7 @@ import { defineConfig, devices } from '@playwright/test';
  *   TV_USERNAME / TV_PASSWORD   if set, auth.setup.ts logs in once and every clip
  *                 starts already signed in (the login itself isn't filmed).
  *                 Or save a session by hand into .auth/state.json (SSO/captcha logins).
+ *   TV_VIEWPORT   "WIDTHxHEIGHT" of the page and the video (default 1280x800)
  *   TV_REHEARSE=1 dry run: no video, no pauses — proves every selector first
  *
  * Clip specs live in clips/*.spec.ts and navigate with RELATIVE paths
@@ -22,10 +23,14 @@ const hasLogin = Boolean(process.env.TV_USERNAME && process.env.TV_PASSWORD);
 // A session saved by hand (`npx playwright codegen --save-storage=.auth/state.json <url>`)
 // is used too — the route for SSO / captcha logins that automation can't pass.
 const hasSession = hasLogin || existsSync('.auth/state.json');
-const viewport = { width: 1280, height: 800 };
+const vp = /^(\d+)x(\d+)$/.exec(process.env.TV_VIEWPORT ?? '1280x800');
+if (!vp) throw new Error(`TV_VIEWPORT must look like 1280x800, got "${process.env.TV_VIEWPORT}".`);
+const viewport = { width: Number(vp[1]), height: Number(vp[2]) };
 
 export default defineConfig({
   outputDir: './test-results',
+  // Copies takes out of test-results before the next run wipes it.
+  globalTeardown: './teardown.ts',
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -48,7 +53,7 @@ export default defineConfig({
     {
       name: 'clips',
       testMatch: /clips\/.*\.spec\.ts/,
-      dependencies: hasLogin ? ['setup'] : [],
+      dependencies: hasSession ? ['setup'] : [],
       use: {
         ...devices['Desktop Chrome'],
         viewport,

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { tap, typeInto } from '../cursor';
-import { createTimeline, glideTo, hold } from '../timeline';
+import { createTimeline, hold } from '../timeline';
 
 /**
  * Example clip for the repository's demo app (examples/demo-app, any static
@@ -8,12 +8,14 @@ import { createTimeline, glideTo, hold } from '../timeline';
  * every clip follows:
  *  - createTimeline() is the first line (its t0 is the video's t=0);
  *  - every viewer-visible step is tl.step('<caption the viewer will read>', …);
- *  - every click/type goes through tap()/typeInto() so the cursor glides there
- *    and the click time is logged for the editor's click sound;
+ *  - every click/type goes through tap()/typeInto(): the cursor glides there
+ *    (smooth-scrolling first if it's off-screen) and the click's time, box and
+ *    whether the control vanished are logged — the editor's click sound,
+ *    auto-ring and holdFirst come from that;
  *  - every step ENDS with an expect — the recording is also a test, so when the
  *    app's UI changes a re-record fails loudly instead of filming a broken flow;
- *  - glideTo() before anything below the fold (no jump cuts), hold() after key
- *    moments so the viewer can read the screen.
+ *  - hold() after key moments so the viewer can read the screen; glideTo() only
+ *    to show something below the fold that isn't clicked.
  */
 test('01 example: create an order', async ({ page }, testInfo) => {
   const tl = createTimeline(testInfo, page);
@@ -49,9 +51,7 @@ test('01 example: create an order', async ({ page }, testInfo) => {
   });
 
   await tl.step('Click “Save order” — the order appears in the list', async () => {
-    const save = page.getByRole('button', { name: 'Save order' });
-    await glideTo(page, save);
-    await tap(page, save);
+    await tap(page, page.getByRole('button', { name: 'Save order' }));
     await expect(page.getByRole('status')).toHaveText(/Order ORD-\d+ created/);
     await expect(page.getByTestId('orders-table')).toContainText('Coffee beans 1 kg');
     await hold(page, 2000);
