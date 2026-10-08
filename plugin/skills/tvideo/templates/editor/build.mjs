@@ -20,12 +20,13 @@ if (!cfg) throw new Error('tvideo.config.json missing — copy tvideo.config.exa
 const plan = readJson('plan.json', null);
 if (!plan) throw new Error('plan.json missing — copy plan.example.json and edit it.');
 const timeline = readJson('timeline.json', null);
-if (!timeline) throw new Error('timeline.json missing — import the recording first (scripts/import.sh).');
+if (!timeline) throw new Error('timeline.json missing — import the recording first (scripts/new-clip.mjs or import.mjs).');
 if (timeline.length !== plan.steps.length) {
   throw new Error(`plan.json has ${plan.steps.length} steps but timeline.json has ${timeline.length} — they must match 1:1, in order.`);
 }
 const voices = readJson('voices.json', {});
-const clicks = readJson('clicks.json', []).map((ms) => ms / 1000);
+// clicks.json: v1 recorders wrote bare ms numbers; v1.1 writes {ms, box, gone}.
+const clicks = readJson('clicks.json', []).map((c) => (typeof c === 'number' ? { t: c / 1000 } : { ...c, t: c.ms / 1000 }));
 
 const probe = (file, entries) =>
   execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', entries, '-of', 'csv=p=0', file], { encoding: 'utf8' }).trim();
@@ -53,7 +54,9 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 
 mkdirSync('assets/holds', { recursive: true });
 function holdFrame(id, t) {
-  const out = `assets/holds/${id}.png`;
+  // Keyed on the time too: flipping holdFirst moves the sample point, and a
+  // cache keyed on the id alone would keep serving the other moment's frame.
+  const out = `assets/holds/${id}-${t.toFixed(2)}.png`;
   if (!existsSync(out)) {
     execFileSync('ffmpeg', ['-v', 'error', '-y', '-ss', String(Math.max(0, t - 0.05)), '-i', plan.footage, '-frames:v', '1', out]);
   }
@@ -83,49 +86,68 @@ voice('intro', 0.4);
 T = introDur;
 
 const steps = plan.steps.map((s, i) => {
-  const a = timeline[i].startMs / 1000;
+  const a0 = timeline[i].startMs / 1000;
   // The recording runs a little past the last step; never ask for frames past EOF.
   const b = Math.min(timeline[i].endMs / 1000, footageEnd - 0.1);
-  const seg = b - a;
-  const minHold = s.zoom?.ring ? RING_MIN_HOLD : 0.2;
-  const dur = Math.max(seg + minHold, readDur(s.caption), VOICE_LEAD + voiceDur(s.id) + BREATH);
-  const start = T;
+  if (b - a0 <= 0.05) {
+    throw new Error(`step ${s.id}: its source range ${a0.toFixed(2)}–${(timeline[i].endMs / 1000).toFixed(2)} s is past the end of the footage (${footageEnd.toFixed(2)} s) — re-import the recording that wrote this timeline.json.`);
+  }
+  // `zoom: true` is shorthand for "zoom on, and ring the step's first click".
+  const z = s.zoom === true ? { ring: true } : s.zoom;
+  // ring: true / N → the box of the step's first / Nth tap, as the recorder saw
+  // it — no pixel measuring, and it follows the control when the layout moves.
+  const stepClicks = clicks.filter((c) => c.t >= a0 && c.t < b);
+  const ringClick = typeof z?.ring === 'number' || z?.ring === true ? stepClicks[(z.ring === true ? 1 : z.ring) - 1] : null;
+  if (ringClick && !ringClick.box) throw new Error(`step ${s.id}: ring: ${z.ring} but that click has no box (clicks.json from a v1 recorder, or a rehearsal take) — re-record, or give ring {x,y,w,h}.`);
+  if ((z?.ring === true || typeof z?.ring === 'number') && !ringClick) throw new Error(`step ${s.id}: ring: ${z.ring} but the step has only ${stepClicks.length} tap(s).`);
+  const ring = ringClick ? ringClick.box : z?.ring || null;
   // holdFirst: the step's subject is a control that vanishes once clicked (a
   // button that navigates away), so show the frame BEFORE the click first, then
-  // play the action. Default: play the action, then hold its end state.
+  // play the action. Default: play the action, then hold its end state. Unset →
+  // the recorder knows: a ringed control that disappeared after its click.
+  const holdFirst = s.holdFirst ?? Boolean(ringClick?.gone);
+  // holdFirst starts the action at the ringed click (just after the cursor
+  // arrived), not at the step start: any scroll/glide before it would otherwise
+  // play after a still that already shows the scrolled page — a visible jump back.
+  const anchor = ringClick ?? stepClicks[0];
+  const a = holdFirst && anchor ? Math.max(a0, anchor.t - 0.15) : a0;
+  const seg = b - a;
+  const minHold = ring ? RING_MIN_HOLD : 0.2;
+  const dur = Math.max(seg + minHold, readDur(s.caption), VOICE_LEAD + voiceDur(s.id) + BREATH);
+  const start = T;
   const hold = dur - seg;
-  const vStart = s.holdFirst ? start + hold : start;
-  const hStart = s.holdFirst ? start : start + seg;
+  const vStart = holdFirst ? start + hold : start;
+  const hStart = holdFirst ? start : start + seg;
   media.push(`<video id="v-${s.id}" class="clip shot" src="${plan.footage}" muted playsinline data-start="${r(vStart)}" data-duration="${r(seg)}" data-media-start="${r(a)}" data-track-index="0"></video>`);
   if (hold > 0.04) {
-    // Clicks land at a step's START (the recorder acts, then lingers), so the
-    // frame just before `a` is the pre-click state and `b - 0.2` the settled result.
-    media.push(`<img id="h-${s.id}" class="clip shot" src="${holdFrame(s.id, s.holdFirst ? Math.max(0, a - 0.35) : b - 0.2)}" data-start="${r(hStart)}" data-duration="${r(hold)}" data-track-index="0" alt="" />`);
+    // holdFirst: the frame the action starts from (no click data → just before
+    // the step). Otherwise `b - 0.2`, the settled result.
+    const still = holdFirst ? (a > a0 ? a : Math.max(0, a0 - 0.35)) : b - 0.2;
+    media.push(`<img id="h-${s.id}" class="clip shot" src="${holdFrame(s.id, still)}" data-start="${r(hStart)}" data-duration="${r(hold)}" data-track-index="0" alt="" />`);
   }
   voice(s.id, start + VOICE_LEAD);
   // A click sound on every recorded press inside this step, mapped from source
   // time onto where that range plays in the composition.
-  for (const c of clicks) if (c >= a && c < b) sound(sfx('click-soft'), vStart + (c - a), 0.5);
-  if (s.zoom) {
-    const z = s.zoom;
+  for (const c of stepClicks) if (c.t >= a) sound(sfx('click-soft'), vStart + (c.t - a), 0.5);
+  if (z) {
     // The zoom origin is the one point that stays put while everything scales away
     // from it — so it belongs ON the control (defaults to the ring centre). Any
     // other point P lands at O + (P − O) × scale, which pushes an off-origin
     // control toward the frame edge and can crop it.
-    const zx = z.x ?? z.ring?.x ?? SRC_W / 2, zy = z.y ?? z.ring?.y ?? SRC_H / 2;
+    const zx = z.x ?? ring?.x ?? SRC_W / 2, zy = z.y ?? ring?.y ?? SRC_H / 2;
     tweens.push(`tl.set('#zoom', { transformOrigin: '${r((zx / SRC_W) * 100)}% ${r((zy / SRC_H) * 100)}%' }, ${r(start)});`);
     tweens.push(`tl.to('#zoom', { scale: ${z.scale ?? 1.5}, duration: 0.7, ease: 'power2.inOut' }, ${r(start + (z.at ?? 0.3))});`);
     // holdFirst: zoom back out as the click plays — the page changes under it, and
     // staying zoomed would frame an empty corner of the next screen.
-    const zoomOut = s.holdFirst ? Math.max(start + (z.at ?? 0.3) + 0.8, start + hold - 0.5) : start + dur - 0.6;
+    const zoomOut = holdFirst ? Math.max(start + (z.at ?? 0.3) + 0.8, start + hold - 0.5) : start + dur - 0.6;
     tweens.push(`tl.to('#zoom', { scale: 1, duration: 0.6, ease: 'power2.inOut' }, ${r(zoomOut)});`);
-    if (z.ring) {
+    if (ring) {
       // Accent ring on the control to press; inside #zoom so it scales with the
       // footage. Only over the HOLD still — once the click plays, the page
       // changes under it and the ring would mark nothing.
-      const g = z.ring, pad = 6;
-      const rs = s.holdFirst ? start + (z.at ?? 0.3) + 0.4 : start + seg;
-      const re = s.holdFirst ? start + hold : start + dur - 0.6;
+      const g = ring, pad = 6;
+      const rs = holdFirst ? start + (z.at ?? 0.3) + 0.4 : start + seg;
+      const re = holdFirst ? start + hold : start + dur - 0.6;
       overlays.push(`<div id="ring-${s.id}" class="clip ring" data-start="${r(rs)}" data-duration="${r(re - rs)}" data-track-index="1" style="left:${r((g.x - g.w / 2 - pad) * K)}px;top:${r((g.y - g.h / 2 - pad) * K)}px;width:${r((g.w + pad * 2) * K)}px;height:${r((g.h + pad * 2) * K)}px"><div class="ring-inner"></div></div>`);
       tweens.push(`tl.fromTo('#ring-${s.id} .ring-inner', { opacity: 0, scale: 1.25 }, { opacity: 1, scale: 1, duration: 0.35, ease: 'power2.out' }, ${r(rs)});`);
       tweens.push(`tl.to('#ring-${s.id} .ring-inner', { scale: 1.08, duration: 0.45, ease: 'sine.inOut', yoyo: true, repeat: ${Math.max(1, Math.floor((re - rs - 0.35) / 0.45) - 1)} }, ${r(rs + 0.35)});`);
@@ -135,12 +157,14 @@ const steps = plan.steps.map((s, i) => {
     // Cover on-screen text that must not ship (test ids, real names) with a
     // look-alike box. `after`: seconds into the step's source range when it appears.
     const m = s.mask;
-    const from = (s.holdFirst ? start + hold : start) + (m.after ?? 0);
+    const from = (holdFirst ? start + hold : start) + (m.after ?? 0);
     overlays.push(`<div id="mask-${s.id}" class="clip mask" data-start="${r(from)}" data-duration="${r(start + dur - from)}" data-track-index="1" style="left:${r(m.x * K)}px;top:${r(m.y * K)}px;width:${r(m.w * K)}px;height:${r(m.h * K)}px;font-size:${r((m.fontSize ?? 15) * K)}px;justify-content:${m.align === 'left' ? 'flex-start' : 'flex-end'};background:${m.bg ?? '#fff'};color:${m.color ?? '#141414'}"><span>${esc(m.text)}</span></div>`);
   }
-  if (s.chimeAfter !== undefined) sound(sfx('chime'), (s.holdFirst ? start + hold : start) + s.chimeAfter, 0.45);
+  // Own track: the chime rings ~2.5 s, so on the last step it runs into the outro
+  // whoosh — a deliberate layer, not the overlap the click track must avoid.
+  if (s.chimeAfter !== undefined) sound(sfx('chime'), (holdFirst ? start + hold : start) + s.chimeAfter, 0.45, 7);
   T += dur;
-  return { ...s, start, dur, n: i + 1, srcA: a, srcB: b, vStart, hStart, hold };
+  return { ...s, holdFirst, ring, start, dur, n: i + 1, srcA: a, srcB: b, vStart, hStart, hold };
 });
 
 const outroStart = T;
@@ -157,9 +181,21 @@ if (music) {
 }
 
 const N = steps.length;
+// The caption band is whatever the stage leaves below it: 120 px for 16:10
+// footage, more for wider. A long caption wraps to two lines and would overflow
+// at 40 px, so shrink it until the estimated lines fit.
+// ponytail: width estimate is 0.55 em per character (Latin/Thai average); CJK
+// runs ~1 em and may still wrap — keep captions short there, or measure in-page.
+const CAP_BAND = 1080 - CAP_TOP - 14, CAP_TEXT_W = 1600;
+const capSize = (text) => {
+  let fs = 40;
+  const lines = () => Math.ceil((text.length * 0.55 * fs) / CAP_TEXT_W);
+  while (fs > 24 && lines() * fs * 1.25 + 34 > CAP_BAND) fs -= 2;
+  return fs;
+};
 const captions = steps.map((s) => `
       <div id="cap-${s.id}" class="clip cap" data-start="${r(s.start)}" data-duration="${r(s.dur)}" data-track-index="2">
-        <div class="cap-inner"><span class="badge">${s.n}/${N}</span><span class="cap-text">${esc(s.caption)}</span></div>
+        <div class="cap-inner"><span class="badge">${s.n}/${N}</span><span class="cap-text" style="font-size:${capSize(s.caption)}px">${esc(s.caption)}</span></div>
       </div>`).join('');
 for (const s of steps) {
   tweens.push(`tl.fromTo('#cap-${s.id} .cap-inner', { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: 'power3.out' }, ${r(s.start + 0.05)});`);
@@ -183,7 +219,7 @@ const html = `<!doctype html>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>${esc(plan.title)}</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="assets/vendor/gsap.min.js"></script>
     <style>
       ${faces}
       :root { --bg: ${brand.bg}; --bg2: ${brand.bg2}; --glow: ${brand.glow}; --accent: ${brand.accent}; --on-accent: ${brand.onAccent}; --ink: ${brand.ink}; --cap-bg: ${brand.capBg}; }
@@ -272,13 +308,24 @@ ${captions}
 </html>
 `;
 writeFileSync('index.html', html);
+
+// Sidecar subtitles on the output timeline: upload next to the mp4 (YouTube, LMS)
+// so captions are selectable text for screen readers and translation.
+const stamp = (t, sep) => {
+  const ms = Math.round(t * 1000), p = (n, w = 2) => String(n).padStart(w, '0');
+  return `${p(Math.floor(ms / 3600000))}:${p(Math.floor(ms / 60000) % 60)}:${p(Math.floor(ms / 1000) % 60)}${sep}${p(ms % 1000, 3)}`;
+};
+// One line per cue: a blank line or "-->" inside a caption would end/corrupt it.
+const cue = (s, sep) => `${stamp(s.start, sep)} --> ${stamp(s.start + s.dur, sep)}\n${s.caption.replace(/\s+/g, ' ').replace(/-->/g, '→')}\n`;
+writeFileSync('captions.srt', steps.map((s, i) => `${i + 1}\n${cue(s, ',')}`).join('\n'));
+writeFileSync('captions.vtt', `WEBVTT\n\n${steps.map((s) => cue(s, '.')).join('\n')}`);
 console.log(`built index.html — ${N} steps, ${r(total)}s${Object.keys(voices).length ? ', with narration' : ''}${music ? ', with music' : ''}`);
 // Output times ≠ recording times (the intro and holds shift everything): print
 // where each step lands so snapshots can be aimed (`hyperframes snapshot --at`).
 console.log(`  intro      0.00–${introDur.toFixed(2)}`);
 for (const s of steps) {
   const still = s.hold > 0.04 ? `still ${(s.holdFirst ? s.start : s.vStart + (s.srcB - s.srcA)).toFixed(2)}+${s.hold.toFixed(2)}` : '';
-  console.log(`  ${s.id}  ${s.start.toFixed(2)}–${(s.start + s.dur).toFixed(2)}  (src ${s.srcA.toFixed(2)}–${s.srcB.toFixed(2)}) ${still}${s.zoom ? ' zoom' : ''}${s.zoom?.ring ? '+ring' : ''}${s.mask ? ' mask' : ''}`);
+  console.log(`  ${s.id}  ${s.start.toFixed(2)}–${(s.start + s.dur).toFixed(2)}  (src ${s.srcA.toFixed(2)}–${s.srcB.toFixed(2)}) ${still}${s.holdFirst ? ' holdFirst' : ''}${s.zoom ? ' zoom' : ''}${s.ring ? '+ring' : ''}${s.mask ? ' mask' : ''}`);
 }
 console.log(`  outro      ${outroStart.toFixed(2)}–${total.toFixed(2)}`);
 

@@ -11,8 +11,7 @@
     {
       "id": "s02",
       "caption": "Click “+ New order”",
-      "holdFirst": true,
-      "zoom": { "scale": 1.6, "at": 0.2, "ring": { "x": 1041, "y": 113, "w": 122, "h": 43 } }
+      "zoom": { "scale": 1.6, "at": 0.2, "ring": true }
     },
     {
       "id": "s03",
@@ -23,9 +22,8 @@
     {
       "id": "s05",
       "caption": "Click “Save order” — the order appears in the list",
-      "holdFirst": true,
-      "zoom": { "scale": 1.6, "at": 0.2, "ring": { "x": 258, "y": 649, "w": 111, "h": 42 } },
-      "chimeAfter": 2.6
+      "zoom": { "scale": 1.6, "at": 0.2, "ring": true },
+      "chimeAfter": 0.9
     }
   ]
 }
