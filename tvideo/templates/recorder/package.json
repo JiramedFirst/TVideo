@@ -1,0 +1,12 @@
+{
+  "name": "tvideo-recorder",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "rehearse": "TV_REHEARSE=1 playwright test",
+    "record": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}

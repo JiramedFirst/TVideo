@@ -1,0 +1,19 @@
+{
+  "title": "How to open the getting-started guide",
+  "subtitle": "Example App · Tutorial 1",
+  "footage": "assets/footage.mp4",
+  "outro": {
+    "title": "You're all set",
+    "line": "Find the guide any time under “Docs”"
+  },
+  "steps": [
+    { "id": "s01", "caption": "Open the home page" },
+    {
+      "id": "s02",
+      "caption": "Click “Get started”",
+      "holdFirst": true,
+      "zoom": { "scale": 1.6, "at": 0.2, "ring": { "x": 153, "y": 509, "w": 134, "h": 44 } }
+    },
+    { "id": "s03", "caption": "Scroll down to the installation steps" }
+  ]
+}
