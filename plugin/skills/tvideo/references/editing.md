@@ -8,7 +8,7 @@
   `readingCharsPerSec` (≈12 Thai, ≈15 English).
 - `plan.json` — `title`, `subtitle`, `footage`, `outro {title, line}`, and
   `steps[]` in the same order as the recorder's `tl.step`s.
-- `timeline.json`, `clicks.json` — from the recorder via `scripts/import.sh`.
+- `timeline.json`, `clicks.json` — from the recorder via `scripts/import.mjs` (re-timed to the footage).
 - `voices.json` — optional, from `scripts/voice.mjs`.
 
 ## Timing model
@@ -27,15 +27,20 @@ stay long enough to be found.
 | Key | Use |
 |---|---|
 | `caption` | Required. Short instruction the viewer reads. |
-| `holdFirst: true` | The control disappears once clicked (navigates away). Shows the frame **before** the click (0.35 s before the step) while zoom/ring point at it, then plays the click. |
+| `zoom: true` | Shorthand for `zoom {ring: true}` with default scale/timing. |
 | `zoom {scale=1.5, at=0.3, x?, y?}` | Punch-in at `at` s into the step; eases back out at the step end. The zoom's fixed point defaults to the ring centre — leave x/y out unless there is no ring. Any point P moves to `O + (P − O) × scale`, so a control away from the origin O slides toward the edge and can be cropped. |
-| `zoom.ring {x, y, w, h}` | Accent ring centred on the control (w×h = its size). Shown only over the still, never while the video plays (the page changes under it). |
+| `zoom.ring` | `true` = ring the step's first `tap`, `N` = its Nth tap — the box the recorder logged, so it follows the control across re-records. `{x, y, w, h}` = a hand-measured box (centre + size) for a control not clicked via `tap`. Shown only over the still, never while the video plays (the page changes under it). |
+| `holdFirst` | Defaults to whether the ringed control **vanished** after its click (it navigated away or a menu closed) — the recorder logs that. Then the still is the frame just before the click and the action plays after it, from that same moment. Set `true`/`false` to override. |
 | `mask {x, y, w, h, text, after, align, fontSize, bg, color}` | Covers text that must not ship (test ids, real names) with a look-alike box. `after` = seconds into the step when the text appears. |
 | `chimeAfter` | Seconds into the step to play a success chime (e.g. when a "Saved" dialog appears). |
 
-All coordinates are in the **recording's pixel space** (the size of
-`assets/footage.mp4`, normally 1280×800). Measure them from full-size frames
-(`scripts/frames.sh`), not from the scaled contact sheet.
+Hand-given coordinates (masks, ring objects, zoom x/y) are in the **recording's
+pixel space** (the size of `assets/footage.mp4`, normally 1280×800). Measure them
+from full-size frames (`node <skill>/scripts/frames.mjs`), not from the scaled
+contact sheet.
+
+The build also writes `captions.srt` and `captions.vtt` on the output timeline —
+deliver them next to the MP4 (YouTube / LMS caption tracks).
 
 ## Finding the right moment
 
@@ -52,10 +57,17 @@ Add `stepStart` back to each time; `after = appearTime - stepStart`.
 
 After `node build.mjs` and `npx hyperframes check`, take snapshots at every ring,
 mask and step midpoint (`npx hyperframes snapshot --at …`) and look at them. The
-two classic misses: a ring on the wrong page (the control was clicked earlier than
-you thought — use `holdFirst`), and a still that shows the *next* step (the click
+two classic misses: a ring on the wrong page (the control stayed visible after the
+click so `holdFirst` wasn't inferred — set `holdFirst: true`), and a still that shows the *next* step (the click
 landed exactly on the boundary; the build already samples 0.2 s early, move the
 step boundary in the spec if needed).
+
+## Fonts
+
+The bundled font (IBM Plex Sans Thai) covers Thai and Latin. For CJK, Arabic or
+any other script, put a local font file in the project and list it under
+`font.files` in `tvideo.config.json`; the render can't fetch system or remote
+fonts reliably.
 
 ## Music
 

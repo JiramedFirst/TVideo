@@ -6,7 +6,7 @@ Claude Code plugin that makes tutorial videos for a web app. It records the real
 visible cursor and readable pacing, then edits them with Hyperframes: captions, a zoom and highlight on each control
 to press, click sounds, and music. The result is a 1080p MP4 per task.
 
-[![33-second demo video: a tutorial made by TVideo from the demo app](docs/images/demo.gif)](https://github.com/JiramedFirst/TVideo/releases/download/v1.0.0/TVideo-demo.mp4)
+[![33-second demo video: a tutorial made by TVideo from the demo app](docs/images/demo.gif)](https://github.com/JiramedFirst/TVideo/releases/latest/download/TVideo-demo.mp4)
 
 ![A step with the zoom and highlight ring on the button to press](docs/images/hero.png)
 
@@ -24,19 +24,20 @@ Run your app (staging or local) with a demo account, then ask Claude:
 > Make a tutorial video showing how a customer creates an order on staging.example.com.
 
 Claude splits the request into one clip per task and agrees the list with you. For each clip it writes a Playwright
-script and rehearses it without recording to prove every selector. Then it records, measures where each button sits,
-and builds the edit. You get a draft to review, then the final render in `<work>/clip-NN/renders/`.
+script and rehearses it without recording to prove every selector. Then it records and builds the edit; the
+recorder logs where every clicked control sits, so highlights need no pixel measuring. You get a draft to review,
+then the final render in `<work>/clip-NN/renders/`, with `captions.srt` / `.vtt` next to it.
 
-When the UI changes, ask it to re-record a clip. The edit is generated from the recording's step timeline, so the
-captions, zooms and click sounds follow the new footage without hand editing.
+When the UI changes, ask it to re-record a clip. The edit is generated from the recording's step timeline and click
+log, so the captions, zooms, highlights and click sounds follow the new footage without hand editing.
 
-Captions work in any language. A Thai font is bundled. Narration is optional and uses HeyGen TTS through Hyperframes.
+Captions work in any language. A Thai font is bundled. Rendering is fully local; a HeyGen account is only needed for the optional narration. Stuck? See [troubleshooting](plugin/skills/tvideo/references/troubleshooting.md).
 
 ## Requirements
 
-- Node 20+ and ffmpeg.
+- Node 20.11+ and ffmpeg.
 - Hyperframes skills: `npx hyperframes skills update general-video`. This also installs the sound effects.
-- Playwright + chromium in the recorder folder: `npm i && npx playwright install chromium`.
+- Playwright + chromium in the recorder folder: `npm i` (installs chromium too).
 
 ## Passwords and safety
 
@@ -55,10 +56,11 @@ values in the edit. Tutorial videos get passed around, so keep real customer dat
 |---|---|
 | ![](docs/images/step-dropdown.png) | ![](docs/images/step-result.png) |
 
-The smoke test serves the demo app, rehearses and records the example clip, imports it, and builds the edit. CI
-runs the same script:
+The smoke test serves the demo app, rehearses and records the example clip, imports it, builds the edit and runs
+`hyperframes check`. A faster editor-only test needs no browser. CI runs both:
 
 ```bash
+node tests/build.test.mjs
 node tests/smoke.mjs
 ```
 

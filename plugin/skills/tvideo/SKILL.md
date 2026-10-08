@@ -20,8 +20,12 @@ recorder (Playwright)  ──►  video.webm + timeline.json + clicks.json  ─�
   to press, puts a click sound on every click, and renders.
 
 Because the edit is generated from those files, a re-record after a UI change is
-just: record → import → build → render. Keep it that way — never hand-edit
-`index.html`; change `plan.json` / `tvideo.config.json` and rebuild.
+just: record → `new-clip.mjs` → build → render. Rings follow the control (they
+come from the recorder's click boxes), so nothing needs re-measuring. Keep it that
+way — never hand-edit `index.html`; change `plan.json` / `tvideo.config.json` and
+rebuild.
+
+`<skill>` below means this skill's directory (the folder holding this SKILL.md).
 
 ## Phase 0 — Preflight
 
@@ -34,7 +38,12 @@ before recording; a missing tool found mid-recording wastes a take.
 | Node ≥ 20 | `node -v` | install Node |
 | ffmpeg / ffprobe | `ffmpeg -version` | `brew install ffmpeg` / apt |
 | Hyperframes CLI + skills | `npx hyperframes --version` | `npx hyperframes skills update general-video` (also installs `media-use`, `hyperframes-audio`) |
-| Chromium for Playwright | in the recorder dir: `npx playwright install chromium` | — |
+| Chromium for Playwright | installed by the recorder's `npm i` (postinstall) | `npx playwright install chromium` |
+
+TVideo is tested with Hyperframes 0.8.x. Tell the user the version you found;
+on a different major/minor, build and draft-render the first clip before
+recording the rest, since a Hyperframes change can break the generated
+composition.
 
 Read `references/hyperframes-notes.md` once if you have not used Hyperframes in
 this session (composition rules the build script already follows, and why).
@@ -98,19 +107,22 @@ trade-off, recommend the safe option, and let the user decide — then follow it
    `<select>` popups, date pickers, instant scroll jumps, booking windows).
 3. Write one spec per clip in `recorder/clips/NN-name.spec.ts`, following
    `clips/01-example.spec.ts`: `createTimeline` first; each viewer-visible step
-   is `tl.step('<caption text>', …)` ending in an `expect`; clicks via
-   `tap()`/`typeInto()`; `glideTo()` before anything below the fold; `hold()`
-   after key moments; `await tl.save()` last. Pick values the way a user would —
-   choose from dropdowns/calendars rather than typing codes.
+   is `tl.step('<caption text>', …)` ending in an `expect`; every click via
+   `tap()`/`typeInto()` (they smooth-scroll to off-screen controls and log the
+   control's box for the editor); `glideTo()` only to show something below the
+   fold that isn't clicked; `hold()` after key moments; `await tl.save()` last.
+   Pick values the way a user would — choose from dropdowns/calendars rather
+   than typing codes. Put the control a step is *about* as its first `tap` — the
+   editor rings the first tap by default.
 4. **Rehearse**: `TV_REHEARSE=1 npx playwright test` — no video, no pauses. Fix
    every failure here; it costs seconds instead of a ruined take.
 
 ## Phase 3 — Record
 
 `npx playwright test` (or one clip: `npx playwright test clips/02-`). Each clip
-writes `video.webm`, `timeline.json`, `clicks.json` under
-`test-results/<clip>/`. **Copy them out immediately** (next step does) —
-Playwright wipes `test-results/` on the next run.
+writes `video.webm`, `timeline.json`, `clicks.json`, `sync.json`; after every
+real (non-rehearsal) run they are copied to `recorder/recordings/<timestamp>/<clip>/`,
+so the next run's wipe of `test-results/` can't lose a take.
 
 A failing step means the app did something unexpected (validation, a business
 rule, slow load). Read the failure screenshot, fix the spec or the data, re-run
@@ -120,17 +132,14 @@ flow teaches users the wrong thing.
 ## Phase 4 — Set up the edit
 
 One Hyperframes project per clip, next to the recorder (e.g. `tvideo-work/<app>/clip-02/`).
-`hyperframes init` writes its own starter files; copying the template over them is
-intended (`build.mjs` regenerates `index.html`). Run from the work folder:
+One command creates it (or refreshes it after a re-record — your `plan.json` and
+`tvideo.config.json` are kept): `hyperframes init` if needed, the editor template,
+the imported recording (re-timed to the footage via the sync flash) and the stock
+SFX.
 
 ```bash
-npx hyperframes init clip-02 --non-interactive --example=blank
-cp -R <skill>/templates/editor/. clip-02/
-cp clip-02/tvideo.config.example.json clip-02/tvideo.config.json   # brand, font, logo, music, lang
-cp clip-02/plan.example.json clip-02/plan.json                     # title, outro, one step per tl.step
-ls recorder/test-results/                                          # the clip's folder name is long — find it here
-bash <skill>/scripts/import.sh recorder/test-results/<that-folder> clip-02
-bash <skill>/scripts/sfx.sh clip-02                                # click-soft, whoosh-short, chime, sparkle
+ls recorder/recordings/*/                     # the clip's folder name is long — find it here
+node <skill>/scripts/new-clip.mjs clip-02 recorder/recordings/<ts>/<that-folder>
 ```
 
 In `tvideo.config.json`: set `lang` and `readingCharsPerSec` (≈15 English, ≈12
@@ -142,23 +151,24 @@ refuses a mismatch). Captions in plan.json are what the viewer reads — keep th
 short instructions ("Click “Save”"), not narration. Usually the `tl.step` labels
 are already good captions; copy them over.
 
-## Phase 5 — Measure, build, check
+## Phase 5 — Build, check
 
-1. Pull frames to find coordinates: `bash <skill>/scripts/frames.sh assets/footage.mp4 frames <t1> <t2> …`.
-   Good times: each click in `clicks.json` minus ~0.3 s (the cursor is already on
-   the control — that's its position), and each step's `endMs` minus 0.3 s (the
-   settled result). Read the full-size PNGs. Coordinates are in the *recording's*
-   pixels (e.g. 1280×800).
-2. Add per step as needed (details in `references/editing.md`):
-   - `zoom {scale,at}` + `ring {x,y,w,h}` on the control to press — the zoom
-     centres on the ring (the fixed point of a zoom must be on the control, or the
-     control slides toward the edge and gets cropped);
-   - `holdFirst: true` when the control disappears once clicked (a button that
-     navigates away) — shows the pre-click frame first;
+1. Add per step as needed (details in `references/editing.md`):
+   - `zoom: true` — zoom in and ring the step's first `tap`. The box comes from
+     the recorder, the zoom centres on it, and when that control vanished after
+     the click (it navigated away) the edit shows the pre-click frame first
+     (`holdFirst`, automatic). `zoom {scale, at, ring: 2}` rings the 2nd tap;
+     `holdFirst: false/true` overrides the automatic choice;
    - `mask {x,y,w,h,text,after}` to cover a value that must not ship;
    - `chimeAfter: <s>` for a success moment.
+2. Only masks, zooms without a ring, and controls not clicked through `tap` need
+   pixel coordinates. For those, pull frames:
+   `node <skill>/scripts/frames.mjs assets/footage.mp4 frames <t1> <t2> …` (e.g.
+   each step's `endMs` − 0.3 s for the settled result) and read the full-size
+   PNGs. Coordinates are in the *recording's* pixels (e.g. 1280×800).
 3. `node build.mjs` then `npx hyperframes check`. Fix every error; contrast
-   warnings during a caption's fade-in are expected and harmless.
+   warnings during a caption's fade-in are expected and harmless. The build also
+   writes `captions.srt` / `captions.vtt` — deliver them next to the MP4.
 4. Verify with your own eyes: `build.mjs` prints where each step lands in the
    OUTPUT timeline (output time ≠ recording time — the intro and holds shift it).
    Snapshot inside those windows — `npx hyperframes snapshot --at <t…> --no-end`,
@@ -175,7 +185,7 @@ are already good captions; copy them over.
    when the footage itself is wrong (pacing, a jump, wrong data). Fix footage
    problems at the source, not with overlays.
 3. Final: `npx hyperframes render --quality delivery -o renders/<clip-name>.mp4`.
-   Report path, duration and size.
+   Report path, duration and size, and the `captions.srt` next to it.
 4. Clean up what the recording created in the app (demo orders/bookings) if the
    environment is shared, and say what you cleaned.
 
@@ -189,10 +199,14 @@ debugging from scratch.
 ## Files in this skill
 
 - `templates/recorder/` — Playwright project: `cursor.ts`, `timeline.ts`,
-  `auth.setup.ts`, `playwright.config.ts`, `clips/01-example.spec.ts` (written for
-  the plugin repository's `examples/demo-app`, paired with `plan.example.json`)
+  `otp.ts`, `auth.setup.ts`, `playwright.config.ts`, `teardown.ts`,
+  `clips/01-example.spec.ts` (written for the plugin repository's
+  `examples/demo-app`, paired with `plan.example.json`)
 - `templates/editor/` — `build.mjs`, `plan.example.json`,
-  `tvideo.config.example.json`, `assets/fonts` (OFL), `assets/music` (CC BY)
-- `scripts/` — `import.sh`, `frames.sh`, `sfx.sh`, `voice.mjs` (optional TTS)
+  `tvideo.config.example.json`, `assets/fonts` (OFL), `assets/music` (CC BY),
+  `assets/vendor/gsap.min.js`
+- `scripts/` — `new-clip.mjs`, `import.mjs`, `frames.mjs`, `sfx.mjs`,
+  `voice.mjs` (optional TTS) — Node only, no bash needed (on Windows, set env
+  vars the PowerShell way: `$env:TV_REHEARSE=1; npx playwright test`)
 - `references/` — `recording.md`, `editing.md`, `narration.md`,
   `hyperframes-notes.md`, `troubleshooting.md`

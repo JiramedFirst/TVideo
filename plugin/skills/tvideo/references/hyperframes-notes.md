@@ -14,7 +14,7 @@ rules — each one is a real failure the template already avoids:
   duration, lint treats each SFX as playing to the end and flags hundreds of
   overlaps (`duplicate_audio_track`).
 - **Fonts need a local `@font-face`**; system fonts may not exist at render time.
-- **Footage should be all-intra** (`import.sh` encodes with `-g 1`) so the preview
+- **Footage should be all-intra** (`import.mjs` encodes with `-g 1`) so the preview
   can seek between many short windows without stutter. Renders are frame-exact
   either way.
 - Validate with `npx hyperframes check` (lint + runtime + layout + contrast).

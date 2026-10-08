@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "tvideo",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "source": "./plugin",
       "description": "Record a real web app with Playwright (visible cursor, smooth pacing) and edit it into a captioned 1080p tutorial video: zoom + highlight on the control to press, click sounds, music, optional narration.",
       "homepage": "https://github.com/JiramedFirst/TVideo",
