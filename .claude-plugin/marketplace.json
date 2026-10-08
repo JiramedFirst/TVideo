@@ -1,0 +1,17 @@
+{
+  "name": "tvideo",
+  "owner": { "name": "Jiramed Jetawattana" },
+  "metadata": {
+    "description": "TVideo — tutorial and how-to videos for any web app, recorded from the real UI and edited with Hyperframes."
+  },
+  "plugins": [
+    {
+      "name": "tvideo",
+      "version": "1.0.0",
+      "source": "./plugin",
+      "description": "Record a real web app with Playwright (visible cursor, smooth pacing) and edit it into a captioned 1080p tutorial video: zoom + highlight on the control to press, click sounds, music, optional narration.",
+      "homepage": "https://github.com/JiramedFirst/TVideo",
+      "repository": "https://github.com/JiramedFirst/TVideo"
+    }
+  ]
+}

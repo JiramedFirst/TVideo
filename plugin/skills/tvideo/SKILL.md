@@ -189,7 +189,8 @@ debugging from scratch.
 ## Files in this skill
 
 - `templates/recorder/` — Playwright project: `cursor.ts`, `timeline.ts`,
-  `auth.setup.ts`, `playwright.config.ts`, `clips/01-example.spec.ts`
+  `auth.setup.ts`, `playwright.config.ts`, `clips/01-example.spec.ts` (written for
+  the plugin repository's `examples/demo-app`, paired with `plan.example.json`)
 - `templates/editor/` — `build.mjs`, `plan.example.json`,
   `tvideo.config.example.json`, `assets/fonts` (OFL), `assets/music` (CC BY)
 - `scripts/` — `import.sh`, `frames.sh`, `sfx.sh`, `voice.mjs` (optional TTS)

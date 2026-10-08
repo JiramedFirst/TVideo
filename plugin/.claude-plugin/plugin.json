@@ -1,0 +1,10 @@
+{
+  "name": "tvideo",
+  "version": "1.0.0",
+  "description": "TVideo — turn a real web app into tutorial / how-to videos: Playwright records the UI with a visible cursor, a Hyperframes edit adds captions, zoom on the control to press, click sounds and music, rendered to 1080p MP4.",
+  "author": { "name": "Jiramed Jetawattana" },
+  "homepage": "https://github.com/JiramedFirst/TVideo",
+  "repository": "https://github.com/JiramedFirst/TVideo",
+  "license": "MIT",
+  "keywords": ["tutorial", "how-to", "video", "screen-recording", "playwright", "hyperframes", "training", "onboarding", "captions", "thai"]
+}

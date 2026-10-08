@@ -115,7 +115,10 @@ const steps = plan.steps.map((s, i) => {
     const zx = z.x ?? z.ring?.x ?? SRC_W / 2, zy = z.y ?? z.ring?.y ?? SRC_H / 2;
     tweens.push(`tl.set('#zoom', { transformOrigin: '${r((zx / SRC_W) * 100)}% ${r((zy / SRC_H) * 100)}%' }, ${r(start)});`);
     tweens.push(`tl.to('#zoom', { scale: ${z.scale ?? 1.5}, duration: 0.7, ease: 'power2.inOut' }, ${r(start + (z.at ?? 0.3))});`);
-    tweens.push(`tl.to('#zoom', { scale: 1, duration: 0.6, ease: 'power2.inOut' }, ${r(start + dur - 0.6)});`);
+    // holdFirst: zoom back out as the click plays — the page changes under it, and
+    // staying zoomed would frame an empty corner of the next screen.
+    const zoomOut = s.holdFirst ? Math.max(start + (z.at ?? 0.3) + 0.8, start + hold - 0.5) : start + dur - 0.6;
+    tweens.push(`tl.to('#zoom', { scale: 1, duration: 0.6, ease: 'power2.inOut' }, ${r(zoomOut)});`);
     if (z.ring) {
       // Accent ring on the control to press; inside #zoom so it scales with the
       // footage. Only over the HOLD still — once the click plays, the page

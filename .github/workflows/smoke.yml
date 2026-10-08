@@ -1,0 +1,25 @@
+name: smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # Playwright in a temp dir, handed to the smoke test — the same way a user reuses an existing install.
+      - run: npm i --no-audit --no-fund @playwright/test
+        working-directory: ${{ runner.temp }}
+      - run: npx playwright install --with-deps chromium
+        working-directory: ${{ runner.temp }}
+      - run: node tests/smoke.mjs
+        env:
+          TV_SMOKE_NODE_MODULES: ${{ runner.temp }}/node_modules

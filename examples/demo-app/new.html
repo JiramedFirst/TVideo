@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>New order — Demo Shop</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <span class="brand">Demo Shop</span>
+    <nav><a class="active" href="./">Orders</a><a href="#">Products</a><a href="#">Customers</a></nav>
+    <span class="user">Alex Demo</span>
+  </header>
+  <main>
+    <div class="page-head">
+      <div>
+        <h1>New order</h1>
+        <p class="muted">Fields marked * are required.</p>
+      </div>
+      <a class="btn" href="./">Cancel</a>
+    </div>
+    <form id="order-form" class="card" novalidate>
+      <label>Customer *</label>
+      <div class="combo" data-testid="customer">
+        <button type="button" class="combo-btn" aria-haspopup="listbox" aria-expanded="false">Choose a customer…</button>
+        <ul class="combo-list" role="listbox" hidden>
+          <li role="option" data-value="Northwind Traders">Northwind Traders</li>
+          <li role="option" data-value="Blue Harbor Cafe">Blue Harbor Cafe</li>
+          <li role="option" data-value="Greenleaf Market">Greenleaf Market</li>
+        </ul>
+        <input type="hidden" name="customer" />
+      </div>
+      <label for="product">Product *</label>
+      <input id="product" name="product" placeholder="e.g. Coffee beans 1 kg" />
+      <label for="qty">Quantity *</label>
+      <input id="qty" name="qty" type="number" min="1" value="1" />
+      <label for="note">Note for the warehouse</label>
+      <textarea id="note" name="note" rows="3"></textarea>
+      <p id="error" class="error" hidden>Please fill in every required field.</p>
+      <div class="actions"><button class="btn primary" type="submit">Save order</button></div>
+    </form>
+  </main>
+  <script src="app.js"></script>
+  <script>initForm();</script>
+</body>
+</html>

@@ -1,68 +1,67 @@
 # TVideo
 
-A Claude Code skill that turns a **real web app** into polished **tutorial / how-to videos** — no screen-recording software, no video editor.
+[![smoke](https://github.com/JiramedFirst/TVideo/actions/workflows/smoke.yml/badge.svg)](https://github.com/JiramedFirst/TVideo/actions/workflows/smoke.yml)
 
-```
-"Make a tutorial video showing how a customer creates an order on https://staging.example.com"
-```
+Claude Code plugin that makes tutorial videos for a web app. It records the real screens with Playwright, with a
+visible cursor and readable pacing, then edits them with Hyperframes: captions, a zoom and highlight on each control
+to press, click sounds, and music. The result is a 1080p MP4 per task.
 
-Claude then:
+[![33-second demo video: a tutorial made by TVideo from the demo app](docs/images/demo.gif)](https://github.com/JiramedFirst/TVideo/releases/download/v1.0.0/TVideo-demo.mp4)
 
-1. **Plans** the clips with you (one task per video, language, brand, demo account).
-2. **Records** the real UI with Playwright — a visible cursor glides to every button, smooth scrolling, readable pacing. A rehearsal run proves every selector first.
-3. **Edits** with [Hyperframes](https://hyperframes.heygen.com): branded intro/outro cards, step captions (any language — Thai font included), zoom + highlight ring on the control to press, a click sound on every click, music, optional TTS narration.
-4. **Renders** a 1080p MP4 per clip.
-
-Re-recording after a UI change is one command per clip — the edit is generated from the recording's timeline, not hand-made.
+![A step with the zoom and highlight ring on the button to press](docs/images/hero.png)
 
 ## Install
 
-```bash
-git clone https://github.com/JiramedFirst/TVideo && cp -R TVideo/tvideo ~/.claude/skills/tvideo
+```
+/plugin marketplace add JiramedFirst/TVideo
+/plugin install tvideo@tvideo
 ```
 
-Requirements: Node ≥ 20, ffmpeg, and Hyperframes skills (`npx hyperframes skills update general-video`). Claude checks these for you in its first step.
+## Use
 
-Then just ask Claude Code for a tutorial video of your app. Try the built-in example: *"Use tvideo to make the example clip against https://playwright.dev/"*.
+Run your app (staging or local) with a demo account, then ask Claude:
 
-## What's inside
+> Make a tutorial video showing how a customer creates an order on staging.example.com.
 
-| Path | What |
+Claude splits the request into one clip per task and agrees the list with you. For each clip it writes a Playwright
+script and rehearses it without recording to prove every selector. Then it records, measures where each button sits,
+and builds the edit. You get a draft to review, then the final render in `<work>/clip-NN/renders/`.
+
+When the UI changes, ask it to re-record a clip. The edit is generated from the recording's step timeline, so the
+captions, zooms and click sounds follow the new footage without hand editing.
+
+Captions work in any language. A Thai font is bundled. Narration is optional and uses HeyGen TTS through Hyperframes.
+
+## Requirements
+
+- Node 20+ and ffmpeg.
+- Hyperframes skills: `npx hyperframes skills update general-video`. This also installs the sound effects.
+- Playwright + chromium in the recorder folder: `npm i && npx playwright install chromium`.
+
+## Passwords and safety
+
+The recorder reads credentials from environment variables only (`TV_USERNAME`, `TV_PASSWORD`). For SSO or captcha
+logins, sign in once by hand and save the session (`npx playwright codegen --save-storage=.auth/state.json <url>`).
+
+Recording drives the app for real: forms submit and emails go out. Use staging and a fictional demo account.
+Claude asks before recording against a shared environment and never completes a real payment. It can mask on-screen
+values in the edit. Tutorial videos get passed around, so keep real customer data off screen.
+
+## Demo
+
+`examples/demo-app/` is a small static app, and the plugin's example clip and plan are written for it.
+
+| Choosing from a dropdown | The result after saving |
 |---|---|
-| `tvideo/SKILL.md` | The workflow Claude follows (preflight → brief → rehearse → record → edit → render) |
-| `tvideo/templates/recorder/` | Playwright project: visible cursor, step timeline, click log, login once, example clip |
-| `tvideo/templates/editor/` | `build.mjs` (recording → Hyperframes composition), config + plan examples, fonts, music |
-| `tvideo/scripts/` | `import.sh`, `frames.sh`, `sfx.sh`, `voice.mjs` |
-| `tvideo/references/` | Recording/editing/narration guides and a troubleshooting table of real failures |
+| ![](docs/images/step-dropdown.png) | ![](docs/images/step-result.png) |
 
-## Safety
+The smoke test serves the demo app, rehearses and records the example clip, imports it, and builds the edit. CI
+runs the same script:
 
-Recording drives the app for real (forms submit, records and emails get created). Use a staging environment and a fictional demo account, and never film real customer data — the skill asks before recording against shared environments and can mask on-screen values in the edit. Credentials are read from environment variables only.
-
----
-
-## ภาษาไทย (เริ่มต้นใช้งาน)
-
-TVideo คือ skill สำหรับ Claude Code ใช้ทำ **วิดีโอสอนใช้งานเว็บแอป** จากระบบจริง ไม่ต้องอัดจอหรือตัดต่อเอง
-
-**ติดตั้ง:** copy โฟลเดอร์ `tvideo` ไปไว้ที่ `~/.claude/skills/tvideo` ต้องมี Node 20 ขึ้นไป, ffmpeg และ Hyperframes (`npx hyperframes skills update general-video`) ซึ่ง Claude จะเช็คให้ตอนเริ่มงาน
-
-**วิธีใช้:** พิมพ์สั่ง Claude Code เช่น
-
-> ทำวิดีโอสอนลูกค้าวิธีสร้างคำสั่งซื้อในระบบ https://staging.example.com ใช้บัญชีทดสอบ caption ภาษาไทย
-
-Claude จะทำตามลำดับนี้:
-1. ถามรายละเอียดที่จำเป็น
-2. ซ้อมเดินทุกปุ่มก่อนอัดจริง 1 รอบ
-3. อัดหน้าจอจริงพร้อมเมาส์
-4. ตัดต่อใส่ caption, ซูม, กรอบไฮไลต์, เสียงคลิก และเพลง
-5. render เป็นไฟล์ MP4
-
-**ข้อควรระวัง:**
-- การอัดคือการใช้ระบบจริง ข้อมูลจะถูกสร้างและ email ส่งออกจริง ควรใช้ระบบทดสอบกับบัญชีสมมติ
-- ห้ามให้ข้อมูลลูกค้าจริงโผล่ในวิดีโอ
-- รหัสผ่านต้องตั้งผ่าน environment variable ห้ามพิมพ์ลงแชท
+```bash
+node tests/smoke.mjs
+```
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Bundled third-party assets keep their own licenses — see [THIRD_PARTY.md](THIRD_PARTY.md).
+MIT. The bundled font (OFL) and music (CC BY 4.0) keep their own licenses: see [THIRD_PARTY.md](THIRD_PARTY.md).

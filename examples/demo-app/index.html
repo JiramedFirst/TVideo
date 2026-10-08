@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orders — Demo Shop</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <span class="brand">Demo Shop</span>
+    <nav><a class="active" href="./">Orders</a><a href="#">Products</a><a href="#">Customers</a></nav>
+    <span class="user">Alex Demo</span>
+  </header>
+  <main>
+    <div class="page-head">
+      <div>
+        <h1>Orders</h1>
+        <p class="muted">Every order your team has placed.</p>
+      </div>
+      <a class="btn primary" href="new.html" data-testid="new-order">+ New order</a>
+    </div>
+    <div id="toast" class="toast" role="status" hidden></div>
+    <table class="grid" data-testid="orders-table">
+      <thead><tr><th>Order</th><th>Customer</th><th>Product</th><th>Qty</th><th>Status</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </main>
+  <script src="app.js"></script>
+  <script>renderOrders();</script>
+</body>
+</html>
