@@ -1,7 +1,8 @@
 // Smoke test: the whole TVideo pipeline on the repo's demo app, minus the final
 // render. Serves examples/demo-app, rehearses + records the example clip with the
-// recorder template, imports it into the editor template, builds the composition
-// and checks what came out. Same script CI runs.
+// recorder template, sets up an editor project with new-clip.mjs, builds the
+// composition, checks what came out and runs `hyperframes check` on it. Same
+// script CI runs.
 //
 //   node tests/smoke.mjs
 //
@@ -55,15 +56,21 @@ try {
   const clicks = JSON.parse(readFileSync(join(out, 'clicks.json'), 'utf8'));
   if (timeline.length !== 5) fail(`expected 5 steps, got ${timeline.length}`);
   if (clicks.length < 5) fail(`expected ≥5 logged clicks, got ${clicks.length}`);
+  if (!clicks.every((c) => c.box?.w > 0)) fail('every click should carry its control box');
+  // "+ New order" and "Save order" navigate away; the auto-holdFirst depends on it.
+  if (clicks.filter((c) => c.gone).length < 2) fail(`expected ≥2 clicks on controls that vanish, got ${clicks.filter((c) => c.gone).length}`);
+  if (!existsSync(join(out, 'sync.json'))) fail('recording is missing sync.json');
   ok(`recorded ${timeline.length} steps, ${clicks.length} clicks`);
 
-  // 3. Editor: copy the template, import, build.
+  // 3. Editor: new-clip (init + template + import + sfx), build, Hyperframes check.
   const prj = join(work, 'clip');
-  cpSync(join(SKILL, 'templates/editor'), prj, { recursive: true });
-  cpSync(join(prj, 'tvideo.config.example.json'), join(prj, 'tvideo.config.json'));
-  cpSync(join(prj, 'plan.example.json'), join(prj, 'plan.json'));
-  execFileSync('bash', [join(SKILL, 'scripts/import.sh'), out, prj], { stdio: 'inherit' });
+  const importLog = execFileSync('node', [join(SKILL, 'scripts/new-clip.mjs'), prj, out], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
+  process.stdout.write(importLog);
+  // The flash must be found: without it every time is off by fixture setup.
+  if (!/sync offset -?\d+ ms/.test(importLog)) fail('import did not find the sync flash');
   execFileSync('node', ['build.mjs'], { cwd: prj, stdio: 'inherit' });
+  execFileSync('npx', ['hyperframes', 'check'], { cwd: prj, stdio: 'inherit' });
+  ok('hyperframes check passed');
   const html = readFileSync(join(prj, 'index.html'), 'utf8');
   const caps = html.match(/id="cap-s\d+"/g) ?? [];
   const rings = html.match(/id="ring-s\d+"/g) ?? [];

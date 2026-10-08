@@ -15,6 +15,7 @@ jobs:
         with:
           node-version: "22"
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: node tests/build.test.mjs
       # Playwright in a temp dir, handed to the smoke test — the same way a user reuses an existing install.
       - run: npm i --no-audit --no-fund @playwright/test
         working-directory: ${{ runner.temp }}
