@@ -6,7 +6,7 @@ Claude Code plugin that makes tutorial videos for a web app. It records the real
 visible cursor and readable pacing, then edits them with Hyperframes: captions, a zoom and highlight on each control
 to press, click sounds, and music. The result is a 1080p MP4 per task.
 
-[![33-second demo video: a tutorial made by TVideo from the demo app](docs/images/demo.gif)](https://github.com/JiramedFirst/TVideo/releases/latest/download/TVideo-demo.mp4)
+[![Demo video: a tutorial made by TVideo from the demo app](docs/images/demo.gif)](https://github.com/JiramedFirst/TVideo/releases/latest/download/TVideo-demo.mp4)
 
 ![A step with the zoom and highlight ring on the button to press](docs/images/hero.png)
 
