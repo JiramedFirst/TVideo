@@ -29,6 +29,21 @@ all of them.
    It writes `assets/voice/*.mp3` + `voices.json` and only regenerates changed
    lines. Then `node build.mjs` — steps stretch to fit the voice.
 
+## Generating (Google Cloud Text-to-Speech)
+
+An alternative with many native voices (Thai included) and a larger free tier.
+
+1. In Google Cloud Console enable **Cloud Text-to-Speech API**, create an API
+   key (APIs & Services → Credentials), and have the user
+   `export GOOGLE_TTS_API_KEY=...` in their own shell — never paste it into chat
+   or files.
+2. List voices: `node <skill>/scripts/voice.mjs --engine google --list --lang th-TH`
+   (catalog: https://cloud.google.com/text-to-speech/docs/list-voices-and-types).
+   `Chirp3-HD` voices sound most natural; generate one line with 2–3 voices and let the user choose.
+3. `node <skill>/scripts/voice.mjs --engine google --voice <name>` in the clip
+   project (language is taken from the voice name). Same `voices.json`, same
+   skip-unchanged behaviour, then `node build.mjs`.
+
 ## Quota
 
 Free plans allow only a couple of minutes of TTS per month. Budget ≈ (number of
