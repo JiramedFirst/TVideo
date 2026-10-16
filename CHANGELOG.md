@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Narration via Google Cloud Text-to-Speech: `voice.mjs --engine google --voice <name>` (key in
+  `GOOGLE_TTS_API_KEY`), `--list` to browse voices. HeyGen stays the default. Test: `tests/voice-google.test.mjs`.
+
 ## 1.1.0 — 2026-10-08
 
 - **Auto highlight.** `tap` logs each control's box and whether it vanished after the click. `zoom: true` (or

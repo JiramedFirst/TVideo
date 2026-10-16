@@ -35,7 +35,7 @@ then the final render in `<work>/clip-NN/renders/`, with `captions.srt` / `.vtt`
 When the UI changes, ask it to re-record a clip. The edit is generated from the recording's step timeline and click
 log, so the captions, zooms, highlights and click sounds follow the new footage without hand editing.
 
-Captions work in any language. A Thai font is bundled. Rendering is fully local; a HeyGen account is only needed for the optional narration. Stuck? See [troubleshooting](plugin/skills/tvideo/references/troubleshooting.md).
+Captions work in any language. A Thai font is bundled. Rendering is fully local; a HeyGen account or a Google Cloud API key is only needed for the optional narration. Stuck? See [troubleshooting](plugin/skills/tvideo/references/troubleshooting.md).
 
 ## Requirements
 

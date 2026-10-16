@@ -65,7 +65,8 @@ Collect, in one short round, what changes the work:
 5. **Brand**: logo file, 1–2 colors, font if the language needs one (bundled
    IBM Plex Sans Thai covers Thai + Latin). Defaults are a neutral navy/green.
 6. **Audio**: captions + click SFX are the default. Music: bundled CC BY track or
-   none. Narration is optional and costs TTS quota — see `references/narration.md`.
+   none. Narration is optional (HeyGen or Google Cloud TTS) and costs TTS
+   quota — see `references/narration.md`.
 
 ### Safety decisions (settle these in the brief, before any recording)
 
