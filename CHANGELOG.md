@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 — 2026-10-16
 
 - Narration via Google Cloud Text-to-Speech: `voice.mjs --engine google --voice <name>` (key in
   `GOOGLE_TTS_API_KEY`), `--list` to browse voices. HeyGen stays the default. Test: `tests/voice-google.test.mjs`.
