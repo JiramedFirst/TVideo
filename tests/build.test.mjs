@@ -67,6 +67,15 @@ function project({ plan = PLAN, timeline = TIMELINE, clicks = CLICKS, voices, co
 }
 const attr = (html, id, name) => new RegExp(`id="${id}"[^>]*?${name}="([^"]*)"`).exec(html)?.[1];
 const K = 1.125; // 1280x800 fitted into the 1440x900 stage
+const ms = (v) => Math.round(Number(v) * 1000);
+// Scene hosts in index.html, in order, timed as written (whole ms).
+const hosts = (html) => [...html.matchAll(/<div id="([^"]+)" data-composition-id="[^"]+" data-composition-src="[^"]+" data-start="([^"]+)" data-duration="([^"]+)"/g)]
+  .map(([, id, s, d]) => ({ id, start: ms(s), dur: ms(d) }));
+// The zoom-in and zoom-out of one step must not overlap and must end inside the scene.
+const zoomOk = (scene, id) => {
+  const [zin, zout] = [...scene.matchAll(new RegExp(`fromTo\\('#zoom-${id}'.*?duration: ([\\d.]+).*?\\}, ([\\d.]+)\\);`, 'g'))].map(([, d, at]) => ({ d: ms(d), at: ms(at) }));
+  return Boolean(zin && zout) && zout.at >= zin.at + zin.d && zout.at + zout.d <= ms(attr(scene, `cap-${id}`, 'data-duration'));
+};
 
 {
   const p = project({ voices: { s03: { path: 'assets/v.mp3', duration: 6 } } });
@@ -78,6 +87,18 @@ const K = 1.125; // 1280x800 fitted into the 1440x900 stage
   check(ids.every((id) => html.includes(`<div id="${id}" data-composition-id="${id}" data-composition-src="compositions/${id}.html"`)), 'index.html hosts every scene');
   check(!/fromTo\('#intro-(title|sub)'/.test(scene('intro')) && scene('intro').includes('id="intro-title"'), 'intro title is on screen from frame 0 (no fade-in)');
   check(/\.credit \{[^}]*font-size: 28px/.test(scene('outro')), 'music credit is 28 px (type floor)');
+  const hs = hosts(html);
+  const rootEnd = ms(/data-composition-id="main"[^>]*data-duration="([\d.]+)"/.exec(html)?.[1]);
+  check(hs.map((h) => h.id).join() === ids.join() && hs[0].start === 0 && hs.every((h, i) => h.start + h.dur === (hs[i + 1]?.start ?? rootEnd)),
+    'scene hosts meet exactly: intro → steps → outro → root end');
+  // Non-zero scene-local offsets, and the last clip of a step ends on the scene's end.
+  const end = (sc, id) => ms(attr(sc, id, 'data-start')) + ms(attr(sc, id, 'data-duration'));
+  check(ms(attr(s02, 'v-s02', 'data-start')) > 0 && attr(s02, 'v-s02', 'data-start') === attr(s02, 'h-s02', 'data-duration'), 'holdFirst: the action starts where the still ends (local time)');
+  check(ms(attr(s03, 'h-s03', 'data-start')) > 0 && attr(s03, 'h-s03', 'data-start') === attr(s03, 'v-s03', 'data-duration'), 'default: the still starts where the action ends (local time)');
+  check(attr(s03, 'ring-s03', 'data-start') === attr(s03, 'h-s03', 'data-start'), 'ring starts with the still (local time)');
+  check(end(s02, 'v-s02') === ms(attr(s02, 'cap-s02', 'data-duration')) && end(s03, 'h-s03') === ms(attr(s03, 'cap-s03', 'data-duration'))
+    && attr(s03, 'cap-s03', 'data-duration') === attr(html, 'step-s03', 'data-duration'), 'footage and caption reach the scene end exactly');
+  check(zoomOk(s02, 's02') && zoomOk(s03, 's03'), 'zoom-out follows the zoom-in and ends inside the step');
   // auto-ring: s02's ring = its click box, padded 6 px, scaled to the stage
   check(attr(s02, 'ring-s02', 'style')?.startsWith(`left:${(600 - 60 - 6) * K}px;top:${(100 - 20 - 6) * K}px`), 'ring: true rings the click box');
   check(Boolean(attr(s03, 'ring-s03', 'style')), 'zoom: {ring: true} rings too');
@@ -117,6 +138,21 @@ const K = 1.125; // 1280x800 fitted into the 1440x900 stage
   check(!ok.error && ok.scene('step-s02').includes('id="ring-s02"'), 'v1 clicks.json + explicit ring builds');
   check(/has no box/.test(project({ clicks: legacy }).build().error ?? ''), 'v1 clicks.json + ring: true is refused with a reason');
 }
+{
+  // Steps shorter than their zoom: s01 (0.8 s action, short caption) would start
+  // zooming out mid zoom-in; s02 (holdFirst by hand, no ring) would end zoomed in.
+  // One-character captions last 1.0667 s, which rounds start and length apart.
+  const r = project({
+    timeline: [{ startMs: 500, endMs: 1300 }, { startMs: 3000, endMs: 4000 }, { startMs: 6000, endMs: 6500 }],
+    plan: { ...PLAN, steps: [{ id: 's01', caption: 'G', zoom: {} }, { id: 's02', caption: 'Click it now ok', holdFirst: true, zoom: { at: 0.45 } }, { id: 's03', caption: 'x' }] },
+  }).build();
+  check(!r.error && zoomOk(r.scene('step-s01'), 's01') && zoomOk(r.scene('step-s02'), 's02'), 'a step shorter than its zoom still zooms in, then out, inside the step');
+  const hs = hosts(r.html ?? '');
+  check(hs.length === 5 && hs.every((h, i) => i === 4 || h.start + h.dur === hs[i + 1].start), 'scene hosts meet exactly when rounding would leave a 1 ms gap');
+}
+const withIds = (a, b) => project({ plan: { ...PLAN, steps: [{ ...PLAN.steps[0], id: a }, { ...PLAN.steps[1], id: b }, PLAN.steps[2]] } }).build().error ?? '';
+check(/"s 1".*letters, digits/.test(withIds('s 1', 's02')), 'a step id unsafe as a file name is refused');
+check(/"s01", "S01".*clash/.test(withIds('s01', 'S01')), 'step ids that differ only in case are refused');
 check(/must match 1:1/.test(project({ timeline: TIMELINE.slice(0, 2) }).build().error ?? ''), 'plan/timeline step-count mismatch is refused');
 check(/past the end of the footage/.test(project({ timeline: [...TIMELINE.slice(0, 2), { label: 'x', startMs: 12000, endMs: 14000 }] }).build().error ?? ''), 'a step past the end of the footage is refused');
 check(/only 0 tap/.test(project({ clicks: [] }).build().error ?? ''), 'ring: true on a step without taps is refused');

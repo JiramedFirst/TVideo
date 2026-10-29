@@ -25,6 +25,13 @@ const plan = readJson('plan.json', null);
 if (!plan) throw new Error('plan.json missing — copy plan.example.json and edit it.');
 const timeline = readJson('timeline.json', null);
 if (!timeline) throw new Error('timeline.json missing — import the recording first (scripts/new-clip.mjs or import.mjs).');
+// Step ids become file names (compositions/step-<id>.html) and element ids, so they
+// must be safe there and unique even on a case-insensitive file system.
+const badIds = plan.steps.map((s) => s.id).filter((id) => !/^[A-Za-z0-9_-]+$/.test(String(id)));
+if (badIds.length) throw new Error(`step id(s) ${badIds.map((id) => JSON.stringify(id)).join(', ')} in plan.json: use only letters, digits, - and _.`);
+const lower = plan.steps.map((s) => s.id.toLowerCase());
+const dupIds = plan.steps.map((s) => s.id).filter((id) => lower.filter((l) => l === id.toLowerCase()).length > 1);
+if (dupIds.length) throw new Error(`step ids ${dupIds.map((id) => JSON.stringify(id)).join(', ')} in plan.json clash (ids must be unique, ignoring case).`);
 if (timeline.length !== plan.steps.length) {
   throw new Error(`plan.json has ${plan.steps.length} steps but timeline.json has ${timeline.length} — they must match 1:1, in order.`);
 }
@@ -155,17 +162,23 @@ const steps = plan.steps.map((s, i) => {
   const start = T;
   // The step is its own scene: everything inside it is timed from the step start.
   const L = (t) => r(t - start);
+  // The scene's length as its host writes it: the next host's rounded start minus
+  // this one's. Whatever must reach the scene end ends on D, never on r(own length),
+  // or a 1 ms gap renders as a background-only frame.
+  const D = r(r(start + dur) - r(start));
+  const toEnd = (t) => r(D - L(t));
   const media = [], overlays = [], tweens = [];
   let origin = '';
   const hold = dur - seg;
   const vStart = holdFirst ? start + hold : start;
   const hStart = holdFirst ? start : start + seg;
-  media.push(`<video id="v-${s.id}" class="clip shot" src="${plan.footage}" muted playsinline data-hf-media-start-basis="local" data-start="${L(vStart)}" data-duration="${r(seg)}" data-media-start="${r(a)}" data-track-index="0"></video>`);
-  if (hold > 0.04) {
+  const hasHold = hold > 0.04;
+  media.push(`<video id="v-${s.id}" class="clip shot" src="${plan.footage}" muted playsinline data-hf-media-start-basis="local" data-start="${L(vStart)}" data-duration="${holdFirst || !hasHold ? toEnd(vStart) : L(hStart)}" data-media-start="${r(a)}" data-track-index="0"></video>`);
+  if (hasHold) {
     // holdFirst: the frame the action starts from (no click data → just before
     // the step). Otherwise `b - 0.2`, the settled result.
     const still = holdFirst ? (a > a0 ? a : Math.max(0, a0 - 0.35)) : b - 0.2;
-    media.push(`<img id="h-${s.id}" class="clip shot" src="${holdFrame(s.id, still)}" data-start="${L(hStart)}" data-duration="${r(hold)}" data-track-index="0" alt="" />`);
+    media.push(`<img id="h-${s.id}" class="clip shot" src="${holdFrame(s.id, still)}" data-start="${L(hStart)}" data-duration="${holdFirst ? L(vStart) : toEnd(hStart)}" data-track-index="0" alt="" />`);
   }
   voice(s.id, start + VOICE_LEAD);
   // A click sound on every recorded press inside this step, mapped from source
@@ -179,11 +192,23 @@ const steps = plan.steps.map((s, i) => {
     const zx = z.x ?? ring?.x ?? SRC_W / 2, zy = z.y ?? ring?.y ?? SRC_H / 2;
     origin = ` style="transform-origin:${r((zx / SRC_W) * 100)}% ${r((zy / SRC_H) * 100)}%"`;
     const scale = z.scale ?? 1.5;
-    tweens.push(`tl.fromTo('#zoom-${s.id}', { scale: 1 }, { scale: ${scale}, duration: 0.7, ease: 'power2.inOut' }, ${L(start + (z.at ?? 0.3))});`);
+    // Scene-local times. The zoom-out may not start before the zoom-in ends (its
+    // fromTo would snap to full scale) nor end after the scene (the next scene
+    // starts at scale 1, a visible cut).
+    let zAt = z.at ?? 0.3, zIn = 0.7, zOut = 0.6;
+    if (zAt + zIn + zOut > D) {
+      // A step shorter than the zoom: squeeze both tweens into it, still ending at scale 1.
+      zAt = Math.min(zAt, D / 2);
+      const k = (D - zAt) / (zIn + zOut);
+      zIn *= k;
+      zOut *= k;
+    }
+    tweens.push(`tl.fromTo('#zoom-${s.id}', { scale: 1 }, { scale: ${scale}, duration: ${r(zIn)}, ease: 'power2.inOut' }, ${r(zAt)});`);
     // holdFirst: zoom back out as the click plays — the page changes under it, and
     // staying zoomed would frame an empty corner of the next screen.
-    const zoomOut = holdFirst ? Math.max(start + (z.at ?? 0.3) + 0.8, start + hold - 0.5) : start + dur - 0.6;
-    tweens.push(`tl.fromTo('#zoom-${s.id}', { scale: ${scale} }, { scale: 1, duration: 0.6, immediateRender: false, ease: 'power2.inOut' }, ${L(zoomOut)});`);
+    const wanted = holdFirst ? Math.max(zAt + 0.8, hold - 0.5) : D - 0.6;
+    const zoomOut = Math.min(Math.max(wanted, zAt + zIn), D - zOut);
+    tweens.push(`tl.fromTo('#zoom-${s.id}', { scale: ${scale} }, { scale: 1, duration: ${r(zOut)}, immediateRender: false, ease: 'power2.inOut' }, ${r(zoomOut)});`);
     if (ring) {
       // Accent ring on the control to press; inside #zoom so it scales with the
       // footage. Only over the HOLD still — once the click plays, the page
@@ -199,17 +224,18 @@ const steps = plan.steps.map((s, i) => {
   if (s.mask) {
     // Cover on-screen text that must not ship (test ids, real names) with a
     // look-alike box. `after`: seconds into the step's source range when it appears.
-    // data-layout-ignore: its text must match the app's own (small) size to pass as the
-    // real thing, so the type-floor audit doesn't apply.
+    // data-layout-ignore on the text only: it must match the app's own (small) size to
+    // pass as the real thing, so the type floor can't apply — but the box stays
+    // audited, so a misplaced mask is still reported.
     const m = s.mask;
     const from = (holdFirst ? start + hold : start) + (m.after ?? 0);
-    overlays.push(`<div id="mask-${s.id}" class="clip mask" data-layout-ignore data-start="${L(from)}" data-duration="${r(start + dur - from)}" data-track-index="1" style="left:${r(m.x * K)}px;top:${r(m.y * K)}px;width:${r(m.w * K)}px;height:${r(m.h * K)}px;font-size:${r((m.fontSize ?? 15) * K)}px;justify-content:${m.align === 'left' ? 'flex-start' : 'flex-end'};background:${m.bg ?? '#fff'};color:${m.color ?? '#141414'}"><span>${esc(m.text)}</span></div>`);
+    overlays.push(`<div id="mask-${s.id}" class="clip mask" data-start="${L(from)}" data-duration="${toEnd(from)}" data-track-index="1" style="left:${r(m.x * K)}px;top:${r(m.y * K)}px;width:${r(m.w * K)}px;height:${r(m.h * K)}px;font-size:${r((m.fontSize ?? 15) * K)}px;justify-content:${m.align === 'left' ? 'flex-start' : 'flex-end'};background:${m.bg ?? '#fff'};color:${m.color ?? '#141414'}"><span data-layout-ignore>${esc(m.text)}</span></div>`);
   }
   // Own track: the chime rings ~2.5 s, so on the last step it runs into the outro
   // whoosh — a deliberate layer, not the overlap the click track must avoid.
   if (s.chimeAfter !== undefined) sound(sfx('chime'), (holdFirst ? start + hold : start) + s.chimeAfter, 0.45, 7);
   T += dur;
-  return { ...s, holdFirst, ring, start, dur, n: i + 1, srcA: a, srcB: b, vStart, hStart, hold, media, overlays, tweens, origin };
+  return { ...s, holdFirst, ring, start, dur, n: i + 1, srcA: a, srcB: b, vStart, hStart, hold, D, media, overlays, tweens, origin };
 });
 
 const outroStart = T;
@@ -318,7 +344,7 @@ steps.forEach((s, i) => scenes.push({
         </div>
       </div>
     </div>
-    <div id="cap-${s.id}" class="clip cap caption" data-start="0" data-duration="${r(s.dur)}" data-track-index="2">
+    <div id="cap-${s.id}" class="clip cap caption" data-start="0" data-duration="${s.D}" data-track-index="2">
       <span class="cap-inner"><span class="badge">${s.n}/${N}</span><span class="cap-text" style="font-size:${capSize(s.caption)}px">${esc(s.caption)}</span></span>
     </div>`,
   tl: [
@@ -326,7 +352,7 @@ steps.forEach((s, i) => scenes.push({
     ...s.tweens,
     `tl.fromTo('#cap-${s.id} .cap-inner', { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: 'power3.out' }, 0.05);`,
     // The last step's footage fades out under the outro's whoosh.
-    i === N - 1 && `tl.fromTo('#stage-wrap-${s.id}', { opacity: 1 }, { opacity: 0, duration: 0.4, ease: 'power2.in' }, ${r(s.dur - 0.4)});`,
+    i === N - 1 && `tl.fromTo('#stage-wrap-${s.id}', { opacity: 1 }, { opacity: 0, duration: 0.4, ease: 'power2.in' }, ${r(s.D - 0.4)});`,
   ],
 }));
 scenes.push({
@@ -369,7 +395,7 @@ const html = `<!doctype html>
     <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="${r(total)}">
       <div class="bg"></div>
       <div id="glow" class="glow"></div>
-      ${scenes.map((sc) => `<div id="${sc.id}" data-composition-id="${sc.id}" data-composition-src="compositions/${sc.id}.html" data-start="${r(sc.start)}" data-duration="${r(sc.dur)}" data-track-index="1" data-width="1920" data-height="1080"></div>`).join('\n      ')}
+      ${scenes.map((sc) => `<div id="${sc.id}" data-composition-id="${sc.id}" data-composition-src="compositions/${sc.id}.html" data-start="${r(sc.start)}" data-duration="${r(r(sc.start + sc.dur) - r(sc.start))}" data-track-index="1" data-width="1920" data-height="1080"></div>`).join('\n      ')}
       ${audios.join('\n      ')}
     </div>
     <script>

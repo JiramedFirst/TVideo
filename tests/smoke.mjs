@@ -9,7 +9,7 @@
 // Needs Node ≥ 20, ffmpeg/ffprobe, and Playwright's chromium (`npx playwright
 // install chromium`). Set TV_SMOKE_NODE_MODULES to an existing node_modules with
 // @playwright/test to skip the npm install.
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, symlinkSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -69,8 +69,21 @@ try {
   // The flash must be found: without it every time is off by fixture setup.
   if (!/sync offset -?\d+ ms/.test(importLog)) fail('import did not find the sync flash');
   execFileSync('node', ['build.mjs'], { cwd: prj, stdio: 'inherit' });
-  execFileSync('npx', ['hyperframes', 'check'], { cwd: prj, stdio: 'inherit' });
-  ok('hyperframes check passed');
+  // The template's output is check-clean: any finding (warning or info too) fails.
+  const chk = spawnSync('npx', ['hyperframes', 'check', '--json'], { cwd: prj, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  let report;
+  try { report = JSON.parse(chk.stdout); } catch { fail(`hyperframes check --json printed no JSON (exit ${chk.status}): ${chk.stderr.slice(-800)}`); }
+  const findings = [];
+  const walk = (o) => {
+    if (Array.isArray(o)) o.forEach(walk);
+    else if (o && typeof o === 'object') {
+      if (typeof o.code === 'string' && o.severity) findings.push(`${o.severity} ${o.code}: ${o.message ?? ''}`);
+      Object.values(o).forEach(walk);
+    }
+  };
+  walk(report);
+  if (chk.status !== 0 || !report.ok || findings.length) fail(`hyperframes check is not clean (exit ${chk.status}):\n${findings.join('\n')}`);
+  ok('hyperframes check clean (no findings)');
   const html = readFileSync(join(prj, 'index.html'), 'utf8');
   // Captions and rings live in the per-step scenes (compositions/step-<id>.html).
   const scenes = readdirSync(join(prj, 'compositions')).map((f) => readFileSync(join(prj, 'compositions', f), 'utf8')).join('\n');

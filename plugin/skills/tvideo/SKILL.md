@@ -208,8 +208,9 @@ are already good captions; copy them over.
    `node <skill>/scripts/frames.mjs assets/footage.mp4 frames <t1> <t2> …` (e.g.
    each step's `endMs` − 0.3 s for the settled result) and read the full-size
    PNGs. Coordinates are in the *recording's* pixels (e.g. 1280×800).
-3. `node build.mjs` then `npx hyperframes check`. Fix every error; contrast
-   warnings during a caption's fade-in are expected and harmless. The build also
+3. `node build.mjs` then `npx hyperframes check`. It comes back clean on the
+   template's output, so investigate any finding (error, warning or info) before
+   rendering. The build also
    writes `captions.srt` / `captions.vtt` — deliver them next to the MP4.
 4. Verify with your own eyes: `build.mjs` prints where each step lands in the
    OUTPUT timeline (output time ≠ recording time — the intro and holds shift it).

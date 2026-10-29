@@ -17,8 +17,15 @@ rules — each one is a real failure the template already avoids:
 - **Never nest a timed `<video>` inside a timed element.** The footage stage
   (`stage-wrap-<id>`) is untimed; the first step's scene fades the stage in and
   the last one fades it out. Only the `<video>`/`<img>` clips carry
-  `data-start`/`data-duration`. A timed element (caption, ring) holds only
-  `<span>`s, or lint asks for another sub-composition.
+  `data-start`/`data-duration`. A timed element with block children in
+  `index.html` trips `nested_structure_needs_subcomposition`; lint skips that
+  rule inside scene files, but captions and rings keep `<span>` children anyway
+  so they stay valid if moved. `timeline_track_too_dense` (over 3 timed
+  elements on one track) is checked per file, scenes included.
+- **Scenes meet exactly**: each host's `data-duration` is the next host's
+  rounded start minus its own, and the last clip in a scene ends on that rounded
+  duration. Rounding start and length separately leaves 1 ms gaps, which render
+  as a background-only frame.
 - **Same source, many windows**: each step is its own `<video>` with
   `data-media-start`; holds are PNG stills extracted by ffmpeg.
 - **Every `<audio>` needs an `id` and a real `data-duration`.** Without the
