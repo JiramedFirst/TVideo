@@ -128,7 +128,7 @@ try {
   const list = ['--engine', 'google', '--list'];
   mkdirSync(join(home, '.config', 'tvideo'), { recursive: true });
   // Two lines: only the key may reach the process (an app .env holds other secrets).
-  writeFileSync(keyFile, '﻿GOOGLE_TTS_API_KEY=fromfile\nTV_GOOGLE_TTS_URL=http://127.0.0.1:1\n', { mode: 0o600 });
+  writeFileSync(keyFile, '\uFEFFGOOGLE_TTS_API_KEY=fromfile\nTV_GOOGLE_TTS_URL=http://127.0.0.1:1\n', { mode: 0o600 });
   calls.length = 0;
   const quiet = await runAll(list, noKeyEnv);
   check(calls[0]?.key === 'fromfile' && !quiet.includes('chmod'), 'the default key file is read, BOM and all; other lines are ignored (mode 600: no warning)');
@@ -152,6 +152,17 @@ try {
     calls.length = 0;
     const loud = await runAll(list, noKeyEnv);
     check(calls[0]?.key === 'fromfile' && loud.includes('chmod 600'), 'a key file others can read still works but warns');
+    chmodSync(keyFile, 0o620);
+    check((await runAll(list, noKeyEnv)).includes('chmod 600'), 'a key file others can change also warns');
+    chmodSync(keyFile, 0o600);
+    // A pipe (what `<(pass show …)` hands over) is not a folder: the key is read from it.
+    const fifo = join(work, 'key.fifo');
+    execFileSync('mkfifo', [fifo]);
+    const writer = execFile('sh', ['-c', `printf 'GOOGLE_TTS_API_KEY=frompipe\\n' > '${fifo}'`]);
+    calls.length = 0;
+    await run(list, { ...noKeyEnv, TV_GOOGLE_TTS_KEY_FILE: fifo });
+    writer.kill();
+    check(calls[0]?.key === 'frompipe', 'a named pipe works as the key file');
   }
   const missing = await runAll(list, { ...noKeyEnv, TV_GOOGLE_TTS_KEY_FILE: join(work, 'nope.env') });
   check(missing.includes('does not exist') && missing.includes('nope.env'), 'a TV_GOOGLE_TTS_KEY_FILE that does not exist is named in its own error');

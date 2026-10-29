@@ -56,7 +56,8 @@ An alternative with many native voices (Thai included) and a larger free tier.
    key. An `export GOOGLE_TTS_API_KEY=…` in the user's own shell still works, but
    agent harnesses rarely carry it between commands; `node --env-file=<file>
    <skill>/scripts/voice.mjs …` sets it for one command (and is the route on Node
-   older than 20.12, which can't read the file itself). On a 403, the error says where
+   older than 20.12, which can't read the file itself) — but it loads every line
+   of that file, so point it at a file that holds only the key. On a 403, the error says where
    the key came from (a stale exported key is the usual cause).
 2. List voices: `node <skill>/scripts/voice.mjs --engine google --list --lang th-TH`
    (catalog: https://cloud.google.com/text-to-speech/docs/list-voices-and-types).

@@ -49,34 +49,42 @@ const GOOGLE = process.env.TV_GOOGLE_TTS_URL ?? 'https://texttospeech.googleapis
 // (other lines stay out of this process and its ffprobe children). A file named in
 // TV_GOOGLE_TTS_KEY_FILE wins over the environment; the default file only fills in
 // when the environment has no key.
-const sh = (p) => `'${p.replace(/'/g, `'\\''`)}'`;
+// Quote a path for the user's shell in a hint they will copy.
+const sh = (p) => (process.platform === 'win32' ? `"${p}"` : `'${p.replace(/'/g, `'\\''`)}'`);
 const named = process.env.TV_GOOGLE_TTS_KEY_FILE?.replace(/^~(?=$|[\\/])/, homedir());
 const KEY_FILE = resolve(named || join(homedir(), '.config', 'tvideo', 'google-tts.env'));
-let keyFrom;
-const googleKey = () => {
-  if (keyFrom) return keyFrom.key;
+const fromEnv = (key) => ({ key, from: 'the GOOGLE_TTS_API_KEY environment variable' });
+let keyCache;
+/** The key and where it came from (for a 403 message). */
+const googleKey = () => (keyCache ??= readKey());
+const readKey = () => {
   const env = process.env.GOOGLE_TTS_API_KEY;
-  if (env && !named) return (keyFrom = { key: env, from: 'the GOOGLE_TTS_API_KEY environment variable' }).key;
+  if (env && !named) return fromEnv(env);
   const st = statSync(KEY_FILE, { throwIfNoEntry: false });
   if (named && !st) throw new Error(`TV_GOOGLE_TTS_KEY_FILE points at ${KEY_FILE}, which does not exist.`);
-  if (st && !st.isFile()) throw new Error(`${KEY_FILE} is a folder — the key file is a text file inside it (e.g. google-tts.env).`);
+  // Not isFile(): a pipe such as <(pass show …) is a fine place for a secret.
+  if (st?.isDirectory()) throw new Error(`${KEY_FILE} is a folder — the key file is a text file inside it (e.g. google-tts.env).`);
   if (!st) throw new Error(`GOOGLE_TTS_API_KEY is not set — have the user put the line GOOGLE_TTS_API_KEY=… in ${KEY_FILE} (mode 600), or export it (Cloud Console → APIs & Services → Credentials; enable "Cloud Text-to-Speech API").`);
-  if (!util.parseEnv) throw new Error(`this Node can't read ${KEY_FILE} itself — run: node --env-file=${sh(KEY_FILE)} <voice.mjs …>`);
-  if (process.platform !== 'win32' && st.mode & 0o044) console.warn(`! ${KEY_FILE} is readable by other users — run: chmod 600 ${sh(KEY_FILE)}`);
+  if (!util.parseEnv) {
+    // Node < 20.12 can't read it here; `node --env-file` (below) put the key in the environment.
+    if (env) return fromEnv(env);
+    throw new Error(`this Node can't read ${KEY_FILE} itself — run: node --env-file=${sh(KEY_FILE)} <voice.mjs …> (it loads every line of that file, so keep only the key in it).`);
+  }
+  if (process.platform !== 'win32' && st.isFile() && st.mode & 0o066) console.warn(`! other users can read or change ${KEY_FILE} — run: chmod 600 ${sh(KEY_FILE)}`);
   // A BOM (Notepad and friends) would become part of the first variable's name.
-  const key = util.parseEnv(readFileSync(KEY_FILE, 'utf8').replace(/^﻿/, '')).GOOGLE_TTS_API_KEY;
+  const key = util.parseEnv(readFileSync(KEY_FILE, 'utf8').replace(/^\uFEFF/, '')).GOOGLE_TTS_API_KEY;
   if (!key) throw new Error(`${KEY_FILE} was read but has no GOOGLE_TTS_API_KEY=… line (check the spelling; no "export " prefix needed).`);
-  return (keyFrom = { key, from: KEY_FILE }).key;
+  return { key, from: KEY_FILE };
 };
 const google = async (path, body) => {
-  const key = googleKey();
+  const { key, from } = googleKey();
   const res = await fetch(`${GOOGLE}${path}`, {
     method: body ? 'POST' : 'GET',
     headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
     body: body && JSON.stringify(body),
   });
   // Say where the key came from: a stale exported key otherwise looks like a bad file.
-  if (!res.ok) throw new Error(`Google TTS ${res.status} (key from ${keyFrom.from}): ${await res.text()}`);
+  if (!res.ok) throw new Error(`Google TTS ${res.status} (key from ${from}): ${await res.text()}`);
   return res.json();
 };
 
