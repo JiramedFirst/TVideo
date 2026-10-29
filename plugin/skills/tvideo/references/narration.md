@@ -14,7 +14,17 @@ voice → "ครับ").
 Latin script ("Dashboard", "PO", "PDF"). Brand names with a local
 pronunciation are the exception — write them as locals say them (e.g. a Thai
 brand read in Thai script). Generate one test line and listen before generating
-all of them.
+all of them — add `--sample "<text>"` or `--only <id>` (e.g. `--only intro`) to the
+`voice.mjs` command below, keeping its `--engine`/`--voice`/`--lang`. Each writes one
+MP3 and prints its path.
+- `--sample` writes `assets/voice/_sample-<voice>.mp3`: use it to compare voices and
+  to test a term before it is in plan.json.
+- `--only` makes the real line of the chosen voice and caches it, so the full run
+  doesn't bill it again. On a voiced clip it refreshes that line's `voices.json` entry,
+  and refuses (before billing) when the clip was voiced with another voice/language or
+  the entry points at a hand-made file.
+Have the user play the file: speech recognition can't judge pronunciation in every
+language (the default Whisper `small.en` is no help for Thai).
 
 ## Generating (HeyGen via Hyperframes media-use)
 
@@ -39,7 +49,7 @@ An alternative with many native voices (Thai included) and a larger free tier.
    or files.
 2. List voices: `node <skill>/scripts/voice.mjs --engine google --list --lang th-TH`
    (catalog: https://cloud.google.com/text-to-speech/docs/list-voices-and-types).
-   `Chirp3-HD` voices sound most natural; generate one line with 2–3 voices and let the user choose.
+   `Chirp3-HD` voices sound most natural; run `--sample "<a real line>"` with 2–3 voices and let the user choose.
 3. `node <skill>/scripts/voice.mjs --engine google --voice <name>` in the clip
    project (language is taken from the voice name). Same `voices.json`, same
    skip-unchanged behaviour, then `node build.mjs`.
