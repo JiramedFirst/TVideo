@@ -6,6 +6,8 @@
   fictional dataset for the recording (#13).
 - Shortcuts `/tvideo setup | record | dub`: preflight only, a clip without narration, or narration on an existing
   clip (rendered next to the captions-only one). Any other argument keeps the full flow (#14).
+- `theme` presets (`navy`, `purple`, `teal`, `blue`) fill `brand`; `brand.glowAt` / `brand.glow2` place the two
+  background glows in canvas pixels to match a reference frame (#12).
 
 ## 1.2.0 — 2026-10-16
 

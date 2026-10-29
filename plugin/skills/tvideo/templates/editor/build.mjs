@@ -201,11 +201,22 @@ for (const s of steps) {
   tweens.push(`tl.fromTo('#cap-${s.id} .cap-inner', { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: 'power3.out' }, ${r(s.start + 0.05)});`);
 }
 
-const b = cfg.brand ?? {};
-const brand = {
-  bg: b.bg ?? '#0f172a', bg2: b.bg2 ?? '#1e293b', glow: b.glow ?? '#334155', accent: b.accent ?? '#22c55e',
-  onAccent: b.onAccent ?? '#052e16', ink: b.ink ?? '#f8fafc', capBg: b.captionBg ?? 'rgba(2,6,23,0.82)',
+// All dark, so the light ink and caption band stay readable on every theme.
+const THEMES = {
+  navy: { bg: '#0f172a', bg2: '#1e293b', glow: '#334155', accent: '#22c55e', onAccent: '#052e16', ink: '#f8fafc', captionBg: 'rgba(2,6,23,0.82)' },
+  purple: { bg: '#1e1033', bg2: '#2e1065', glow: '#4c1d95', accent: '#a78bfa', onAccent: '#1e1033', ink: '#faf5ff', captionBg: 'rgba(30,16,51,0.85)' },
+  teal: { bg: '#042f2e', bg2: '#134e4a', glow: '#115e59', accent: '#2dd4bf', onAccent: '#042f2e', ink: '#f0fdfa', captionBg: 'rgba(4,47,46,0.85)' },
+  blue: { bg: '#0b1730', bg2: '#172554', glow: '#1e40af', accent: '#60a5fa', onAccent: '#0b1730', ink: '#eff6ff', captionBg: 'rgba(11,23,48,0.85)' },
 };
+const theme = THEMES[cfg.theme ?? 'navy'];
+if (!theme) throw new Error(`unknown theme "${cfg.theme}" — use one of: ${Object.keys(THEMES).join(', ')} (or set brand colours yourself).`);
+const b = { ...theme, ...cfg.brand };
+const brand = {
+  bg: b.bg, bg2: b.bg2, glow: b.glow, accent: b.accent, onAccent: b.onAccent, ink: b.ink, capBg: b.captionBg,
+};
+// Glow positions are canvas pixels (1920x1080), so they can be read straight off a reference frame.
+const glowAt = b.glowAt ? `${b.glowAt[0]}px ${b.glowAt[1]}px` : '78% 18%';
+const g2 = { x: 190, y: 870, size: 900, color: 'color-mix(in srgb, var(--accent) 16%, transparent)', ...b.glow2 };
 const font = cfg.font ?? {};
 const family = font.family ?? 'TVideo Sans';
 const faces = Object.entries(font.files ?? {})
@@ -225,9 +236,9 @@ const html = `<!doctype html>
       :root { --bg: ${brand.bg}; --bg2: ${brand.bg2}; --glow: ${brand.glow}; --accent: ${brand.accent}; --on-accent: ${brand.onAccent}; --ink: ${brand.ink}; --cap-bg: ${brand.capBg}; }
       body { margin: 0; background: var(--bg); font-family: '${family}', sans-serif; color: var(--ink); }
       #root { position: relative; width: 100%; height: 100%; overflow: hidden; }
-      .bg { position: absolute; inset: 0; background: radial-gradient(1200px 700px at 78% 18%, var(--glow) 0%, var(--bg2) 40%, var(--bg) 100%); }
-      .glow { position: absolute; width: 900px; height: 900px; left: -260px; top: 420px; border-radius: 50%;
-              background: radial-gradient(circle, color-mix(in srgb, var(--accent) 16%, transparent) 0%, transparent 65%); }
+      .bg { position: absolute; inset: 0; background: radial-gradient(1200px 700px at ${glowAt}, var(--glow) 0%, var(--bg2) 40%, var(--bg) 100%); }
+      .glow { position: absolute; width: ${g2.size}px; height: ${g2.size}px; left: ${g2.x - g2.size / 2}px; top: ${g2.y - g2.size / 2}px; border-radius: 50%;
+              background: radial-gradient(circle, ${g2.color} 0%, transparent 65%); }
       .stage { position: absolute; left: ${STAGE.x}px; top: ${STAGE.y}px; width: ${STAGE.w}px; height: ${STAGE.h}px;
                border-radius: 18px; overflow: hidden; background: #fff;
                box-shadow: 0 30px 80px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.08); }

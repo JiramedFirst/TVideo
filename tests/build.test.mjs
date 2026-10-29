@@ -39,12 +39,12 @@ const PLAN = {
 };
 
 /** A fresh editor project with the given fixtures; returns {dir, build()}. */
-function project({ plan = PLAN, timeline = TIMELINE, clicks = CLICKS, voices } = {}) {
+function project({ plan = PLAN, timeline = TIMELINE, clicks = CLICKS, voices, config = {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'tvideo-build-'));
   cpSync(EDITOR, dir, { recursive: true });
   cpSync(footage, join(dir, 'assets/footage.mp4'));
   const cfg = JSON.parse(readFileSync(join(dir, 'tvideo.config.example.json'), 'utf8'));
-  writeFileSync(join(dir, 'tvideo.config.json'), JSON.stringify({ ...cfg, music: null, sfx: false, logo: null }));
+  writeFileSync(join(dir, 'tvideo.config.json'), JSON.stringify({ ...cfg, music: null, sfx: false, logo: null, ...config }));
   const put = (f, v) => writeFileSync(join(dir, f), JSON.stringify(v));
   put('plan.json', plan);
   put('timeline.json', timeline);
@@ -106,6 +106,18 @@ const K = 1.125; // 1280x800 fitted into the 1440x900 stage
 check(/must match 1:1/.test(project({ timeline: TIMELINE.slice(0, 2) }).build().error ?? ''), 'plan/timeline step-count mismatch is refused');
 check(/past the end of the footage/.test(project({ timeline: [...TIMELINE.slice(0, 2), { label: 'x', startMs: 12000, endMs: 14000 }] }).build().error ?? ''), 'a step past the end of the footage is refused');
 check(/only 0 tap/.test(project({ clicks: [] }).build().error ?? ''), 'ring: true on a step without taps is refused');
+
+{
+  // Themes fill brand; brand keys win; glows move only when asked.
+  const plain = project().build().html;
+  check(plain.includes('--bg: #0f172a;') && plain.includes('at 78% 18%') && plain.includes('left: -260px; top: 420px;'), 'no theme/glow keys: default look unchanged');
+  const purple = project({ config: { theme: 'purple', brand: { accent: '#ff0000' } } }).build().html;
+  check(project({ config: { theme: 'teal' } }).build().html.includes('--bg: #042f2e;'), 'theme alone works on the example config');
+  check(purple.includes('--bg: #1e1033;') && purple.includes('--accent: #ff0000;'), 'theme fills brand, brand keys override it');
+  const moved = project({ config: { brand: { glowAt: [1500, 200], glow2: { x: 1700, y: 900, size: 600, color: '#a78bfa55' } } } }).build().html;
+  check(moved.includes('at 1500px 200px') && moved.includes('left: 1400px; top: 600px;') && moved.includes('width: 600px') && moved.includes('#a78bfa55 0%'), 'glowAt / glow2 place both glows');
+  check(/unknown theme "pink".*navy, purple, teal, blue/.test(project({ config: { theme: 'pink' } }).build().error ?? ''), 'an unknown theme is refused with the list');
+}
 
 if (failed) {
   console.error(`\n${failed} check(s) failed`);

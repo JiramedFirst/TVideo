@@ -1,15 +1,8 @@
 {
   "lang": "en",
   "readingCharsPerSec": 15,
-  "brand": {
-    "bg": "#0f172a",
-    "bg2": "#1e293b",
-    "glow": "#334155",
-    "accent": "#22c55e",
-    "onAccent": "#052e16",
-    "ink": "#f8fafc",
-    "captionBg": "rgba(2,6,23,0.82)"
-  },
+  "theme": "navy",
+  "brand": {},
   "font": {
     "family": "TVideo Sans",
     "files": {
