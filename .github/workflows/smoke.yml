@@ -17,6 +17,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: node tests/build.test.mjs
       - run: node tests/voice-google.test.mjs
+      - run: node --experimental-strip-types tests/teardown.test.mjs
       # Playwright in a temp dir, handed to the smoke test — the same way a user reuses an existing install.
       - run: npm i --no-audit --no-fund @playwright/test
         working-directory: ${{ runner.temp }}

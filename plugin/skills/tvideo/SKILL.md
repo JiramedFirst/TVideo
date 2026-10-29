@@ -141,7 +141,11 @@ trade-off, recommend the safe option, and let the user decide — then follow it
 ## Phase 2 — Discover and rehearse
 
 1. Create a working folder per project, e.g. `tvideo-work/<app>/`, then copy
-   `templates/recorder/` → `recorder/` and `npm i` there.
+   `templates/recorder/` → `recorder/` and `npm i` there. If the app's login only
+   works through its own repo's Playwright fixtures (signed cookies, seeded
+   sessions), run the clips inside that project instead — see
+   `references/recording.md`, "Embed in an existing Playwright project" — and import
+   takes from the `recordings/` next to that config.
 2. **Discover**: open each page of a flow (Playwright MCP / browser tools, or a
    throwaway script) and pick stable selectors — prefer roles/labels/test-ids
    over CSS classes. Note things that won't film well (see recording.md: native
