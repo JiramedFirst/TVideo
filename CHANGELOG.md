@@ -11,6 +11,9 @@
 - The built composition passes `npx hyperframes check` with no findings: intro, each step and outro are
   sub-compositions in `compositions/`, the intro title is on screen at 0 s (thumbnail), the music credit is 28 px and
   voice clips form one carve group (#10).
+- `voice.mjs --engine google` reads the key from `~/.config/tvideo/google-tts.env` when `GOOGLE_TTS_API_KEY` isn't
+  set, or from `TV_GOOGLE_TTS_KEY_FILE` (which wins over the environment). Only the key line is read; a file others
+  can read gets a warning, and a 403 names where the key came from (#8).
 - Recorder `teardown.ts` saves every clip folder this run filmed (`video.webm` + `timeline.json`) from each project's
   `outputDir`, whatever its name, into `recordings/` next to the config (or `TV_RECORDINGS_DIR`, relative to the config),
   and warns about a filmed clip with no video; `recording.md` explains running the clips inside an existing Playwright
