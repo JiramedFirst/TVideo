@@ -61,7 +61,8 @@ await tl.save();                                      // writes timeline.json + 
 Playwright wipes its output folder (`test-results/`) at the start of every run.
 After each non-rehearsal run the recorder's `globalTeardown` copies every clip
 folder — any folder in a project's `outputDir` holding the `timeline.json` that
-`timeline.ts` writes — to `recordings/<YYYYMMDD-HHMMSS>/` (or
+`timeline.ts` writes (with its `video.webm`), during this run — to
+`recordings/<YYYYMMDD-HHMMSS>/` next to the config file (or
 `$TV_RECORDINGS_DIR/<…>`) and prints the path; import from there. Rehearsals copy
 nothing. If two configs share an `outputDir` they still wipe each other, so give
 each its own.
@@ -79,19 +80,49 @@ project instead of a standalone `recorder/`.
 2. Write the clip specs next to them (`e2e/tvideo/clips/01-….spec.ts`), importing
    `test` from the app's own fixtures file instead of `@playwright/test`, so its
    login fixture signs the page in. Keep the login out of the timeline (before the
-   first `tl.step`).
-3. Give the clips their own config, so the app's suite keeps its settings and
-   output — e.g. `playwright.tvideo.config.ts` beside the project's config. Copy
-   from the template's `playwright.config.ts`: `video: { mode: 'on', size: viewport }`
-   with the same `viewport`, `launchOptions: { slowMo: 250 }` (0 when
-   `TV_REHEARSE=1`, with video off), `workers: 1`, `retries: 0`, a long `timeout`,
-   `globalTeardown` pointing at the copied `teardown.ts`, and an `outputDir` of its
-   own (e.g. `./test-results-tvideo`). Set `testDir` to the clips folder and keep
-   the app's `baseURL` and any `use` options its fixtures need.
-4. Run `npx playwright test -c playwright.tvideo.config.ts` (with `TV_REHEARSE=1`
-   first). Takes land in `recordings/<timestamp>/` of the folder you run from — set
-   `TV_RECORDINGS_DIR` to put them elsewhere (and git-ignore that folder).
-   Folder names follow the project's spec paths, not `clips-…`; that's fine.
+   first `tl.step`), and start every clip with a `page.goto(...)` after
+   `createTimeline`: the visible cursor and the dev-badge hiding are installed for
+   the next navigation, so steps on the page the fixture left open are filmed
+   without them.
+3. Keep the clips out of the app's own suite: add the folder to the main config's
+   `testIgnore` (e.g. `testIgnore: ['**/tvideo/**']`). Otherwise its CI runs every
+   clip for real — slow, filmed, and creating real data.
+4. Give the clips their own config that **extends** the app's, so its `globalSetup`,
+   `webServer`, setup-project `dependencies`, `baseURL` and `use` options (the login
+   fixtures usually need them) still apply — e.g. `playwright.tvideo.config.ts`:
+
+   ```ts
+   import { defineConfig } from '@playwright/test';
+   import app from './playwright.config';
+
+   const REHEARSE = process.env.TV_REHEARSE === '1';
+   const viewport = { width: 1280, height: 800 };
+   export default defineConfig({
+     ...app,
+     testDir: './e2e/tvideo/clips',
+     testIgnore: [],                         // undo step 3 for this config
+     outputDir: './test-results-tvideo',     // its own: two configs sharing one wipe each other
+     globalTeardown: './e2e/tvideo/teardown.ts',
+     workers: 1, retries: 0, timeout: 240_000,
+     use: {
+       ...app.use,
+       viewport,
+       locale: process.env.TV_LOCALE ?? app.use?.locale,
+       timezoneId: process.env.TV_TIMEZONE ?? app.use?.timezoneId,
+       video: REHEARSE ? 'off' : { mode: 'on', size: viewport },
+       launchOptions: { ...app.use?.launchOptions, slowMo: REHEARSE ? 0 : 250 },
+     },
+   });
+   ```
+
+   If the app has several `projects`, keep only the one its login needs (plus its
+   setup project) and point its `testMatch` at the clips. If it already has a
+   `globalTeardown`, chain them (`globalTeardown: [appTeardown, tvideoTeardown]`).
+5. Run `npx playwright test -c playwright.tvideo.config.ts` (with `TV_REHEARSE=1`
+   first). Takes land in `recordings/<timestamp>/` next to that config file —
+   git-ignore it, it holds screen recordings of the app — or wherever
+   `TV_RECORDINGS_DIR` points. Folder names follow the project's spec paths, not
+   `clips-…`; that's fine.
 
 ## Chaining clips without database access
 
