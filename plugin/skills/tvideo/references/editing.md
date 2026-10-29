@@ -4,7 +4,7 @@
 
 - `tvideo.config.json` — `theme` (`navy` default, `purple`, `teal`, `blue`) fills
   brand; any brand key you set wins (`bg`, `bg2`, `glow`, `accent`, `onAccent`, `ink`,
-  `captionBg`; `null` = use the theme's) — the build warns when one hides the theme. To
+  `captionBg`; `null` = use the theme's) — the build warns when brand sets every colour, which hides the theme. To
   match a reference frame, `brand.glowAt: [x, y]` centres the big background glow (its
   colour is `brand.glow`) and `brand.glow2: {x, y, size, color}` the round accent glow — all
   in 1920×1080 canvas pixels; omitted parts keep the defaults. `font.family` + `font.files` (weight → file), `logo`, `logoAlt`,

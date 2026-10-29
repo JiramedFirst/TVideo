@@ -106,12 +106,19 @@ check(/only 0 tap/.test(project({ clicks: [] }).build().error ?? ''), 'ring: tru
 
 {
   // Themes fill brand; brand keys win; glows move only when asked.
-  const html = (config) => project({ config }).build().html ?? '';
+  const html = (config) => {
+    const r = project({ config }).build();
+    if (r.error) console.error(r.error);
+    return r.html ?? '';
+  };
+  const DEFAULT_LOOK = ['--bg: #0f172a;', '--accent: #22c55e;', 'at 78% 18%', '.glow { position: absolute; width: 900px; height: 900px; left: -260px; top: 420px;'];
+  check(DEFAULT_LOOK.every((s) => html({}).includes(s)), 'example config (theme navy, empty brand): default look');
   const pre = { bg: '#0f172a', bg2: '#1e293b', glow: '#334155', accent: '#22c55e', onAccent: '#052e16', ink: '#f8fafc', captionBg: 'rgba(2,6,23,0.82)' };
-  const plain = html({ theme: undefined, brand: pre });
-  check(plain.includes('--bg: #0f172a;') && plain.includes('at 78% 18%') && plain.includes('.glow { position: absolute; width: 900px; height: 900px; left: -260px; top: 420px;'), 'pre-theme config (no theme key, full brand): default look unchanged');
+  check(DEFAULT_LOOK.every((s) => html({ theme: undefined, brand: pre }).includes(s)), 'pre-theme config (no theme key, full brand): default look unchanged');
   const old = project({ config: { theme: 'purple', brand: pre } }).build();
-  check(old.html?.includes('--bg: #0f172a;') && /brand\.bg, .*override it/.test(old.warnings), 'theme hidden by old brand colours warns');
+  check(old.html?.includes('--bg: #0f172a;') && /brand sets every colour/.test(old.warnings), 'theme hidden by old brand colours warns');
+  const one = project({ config: { brand: { accent: '#ff0000' } } }).build();
+  check(one.html?.includes('--accent: #ff0000;') && !/theme/.test(one.warnings), 'overriding one colour stays quiet');
   check(html({ theme: 'teal' }).includes('--bg: #042f2e;'), 'theme alone works on the example config');
   const purple = html({ theme: 'purple', brand: { accent: '#ff0000', ink: null } });
   check(purple.includes('--bg: #1e1033;') && purple.includes('--accent: #ff0000;') && purple.includes('--ink: #faf5ff;'), 'theme fills brand, brand keys override it, null keeps the theme value');
@@ -120,7 +127,13 @@ check(/only 0 tap/.test(project({ clicks: [] }).build().error ?? ''), 'ring: tru
   check(/unknown theme "pink".*navy, purple, teal, blue/.test(project({ config: { theme: 'pink' } }).build().error ?? ''), 'an unknown theme is refused with the list');
   check(/unknown theme "constructor"/.test(project({ config: { theme: 'constructor' } }).build().error ?? ''), 'an inherited name is not a theme');
   check(/glowAt must be \[x, y\]/.test(project({ config: { brand: { glowAt: '78% 18%' } } }).build().error ?? ''), 'a malformed glowAt is refused');
-  check(/glow2\.x must be a number/.test(project({ config: { brand: { glow2: { x: '1700px' } } } }).build().error ?? ''), 'a non-numeric glow2 field is refused');
+  const refused = (brand, re) => re.test(project({ config: { brand } }).build().error ?? '');
+  check(refused({ glow2: { x: '1700px' } }, /glow2\.x must be a number/), 'a non-numeric glow2 field is refused');
+  check(refused({ glow2: [1700, 900, 600] }, /glow2 must be \{x, y, size, color\}/), 'glow2 given as an array is refused');
+  check(refused({ glow2: { size: -600 } }, /size must be above 0/), 'a glow2 size of 0 or less is refused');
+  check(refused({ glow2: { color: '' } }, /color must be a CSS colour/), 'an empty glow2 colour is refused');
+  check(refused({ glowAt: 0 }, /glowAt must be \[x, y\]/), 'a falsy glowAt is refused, not ignored');
+  check(/brand must be an object/.test(project({ config: { brand: 'purple' } }).build().error ?? ''), 'a theme name put in brand is refused');
 }
 
 if (failed) {

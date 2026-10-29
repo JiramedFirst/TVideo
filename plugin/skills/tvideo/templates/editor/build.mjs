@@ -34,22 +34,27 @@ const THEMES = {
 };
 const themeName = cfg.theme ?? 'navy';
 if (!Object.hasOwn(THEMES, themeName)) throw new Error(`unknown theme "${themeName}" — use one of: ${Object.keys(THEMES).join(', ')} (or set brand colours yourself).`);
+const isObj = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
+if (cfg.brand != null && !isObj(cfg.brand)) throw new Error(`brand must be an object of colours — got ${JSON.stringify(cfg.brand)} (a preset name goes in "theme").`);
 // null means "use the default", as it did before themes existed.
 const own = Object.fromEntries(Object.entries(cfg.brand ?? {}).filter(([, v]) => v != null));
-const overridden = Object.keys(THEMES.navy).filter((k) => k in own);
-// Configs from before themes carry every colour, which would hide the theme without a word.
-if (cfg.theme && overridden.length) console.warn(`! theme "${cfg.theme}": brand.${overridden.join(', brand.')} override it — delete those keys to see the theme.`);
+// Configs from before themes carry every colour, which hides the theme without a word.
+// Overriding a few colours on purpose is normal and stays quiet.
+if (cfg.theme && Object.keys(THEMES.navy).every((k) => k in own)) console.warn(`! theme "${cfg.theme}": brand sets every colour, so the theme shows nowhere — delete the brand colours you don't need.`);
 const b = { ...THEMES[themeName], ...own };
 // Glow positions are canvas pixels (1920x1080), so they can be read straight off a reference frame.
 const num = (v) => typeof v === 'number' && Number.isFinite(v);
-if (b.glowAt && !(Array.isArray(b.glowAt) && b.glowAt.length === 2 && b.glowAt.every(num))) {
+if (b.glowAt != null && !(Array.isArray(b.glowAt) && b.glowAt.length === 2 && b.glowAt.every(num))) {
   throw new Error(`brand.glowAt must be [x, y] in canvas pixels, e.g. [1500, 200] — got ${JSON.stringify(b.glowAt)}.`);
 }
+if (b.glow2 != null && !isObj(b.glow2)) throw new Error(`brand.glow2 must be {x, y, size, color} — got ${JSON.stringify(b.glow2)}.`);
 const g2own = Object.fromEntries(Object.entries(b.glow2 ?? {}).filter(([, v]) => v != null));
 for (const k of ['x', 'y', 'size']) {
   if (k in g2own && !num(g2own[k])) throw new Error(`brand.glow2.${k} must be a number of canvas pixels — got ${JSON.stringify(g2own[k])}.`);
 }
-const glowAt = b.glowAt ? `${b.glowAt[0]}px ${b.glowAt[1]}px` : '78% 18%';
+if ('size' in g2own && g2own.size <= 0) throw new Error(`brand.glow2.size must be above 0 — got ${g2own.size}.`);
+if ('color' in g2own && !(typeof g2own.color === 'string' && g2own.color.trim())) throw new Error(`brand.glow2.color must be a CSS colour — got ${JSON.stringify(g2own.color)}.`);
+const glowAt = b.glowAt != null ? `${b.glowAt[0]}px ${b.glowAt[1]}px` : '78% 18%';
 const g2 = { x: 190, y: 870, size: 900, color: 'color-mix(in srgb, var(--accent) 16%, transparent)', ...g2own };
 
 const voices = readJson('voices.json', {});
