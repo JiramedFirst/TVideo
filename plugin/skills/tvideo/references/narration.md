@@ -48,12 +48,16 @@ An alternative with many native voices (Thai included) and a larger free tier.
    write it yourself: have the user put it in a file only they can read —
    `~/.config/tvideo/google-tts.env`, containing `GOOGLE_TTS_API_KEY=…`, mode 600
    (`mkdir -p ~/.config/tvideo && touch ~/.config/tvideo/google-tts.env && chmod 600 ~/.config/tvideo/google-tts.env`,
-   then they paste the line in with an editor). `voice.mjs` reads that file when
-   the key isn't already in the environment (another path: `TV_ENV_FILE=<file>`),
-   and warns if others can read it. An `export GOOGLE_TTS_API_KEY=…` in the user's
-   own shell still works, but agent harnesses rarely carry it between commands;
-   `node --env-file=<file> <skill>/scripts/voice.mjs …` works for one command on
-   any Node.
+   then they paste the line in with an editor; on Windows the same file is
+   `%USERPROFILE%\.config\tvideo\google-tts.env`, made with any editor). `voice.mjs`
+   reads only the `GOOGLE_TTS_API_KEY` line from it, when the key isn't already in
+   the environment, and warns if other users can read it. To use another file, set
+   `TV_GOOGLE_TTS_KEY_FILE=<absolute path or ~/…>` — that file wins over an exported
+   key. An `export GOOGLE_TTS_API_KEY=…` in the user's own shell still works, but
+   agent harnesses rarely carry it between commands; `node --env-file=<file>
+   <skill>/scripts/voice.mjs …` sets it for one command (and is the route on Node
+   older than 20.12, which can't read the file itself). On a 403, the error says where
+   the key came from (a stale exported key is the usual cause).
 2. List voices: `node <skill>/scripts/voice.mjs --engine google --list --lang th-TH`
    (catalog: https://cloud.google.com/text-to-speech/docs/list-voices-and-types).
    `Chirp3-HD` voices sound most natural; run `--sample "<a real line>"` with 2–3 voices and let the user choose.
