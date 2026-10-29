@@ -4,6 +4,8 @@
 
 - Safety: Phase 1 now checks the seeds/fixtures behind the recorded screens for real personal data and seeds a
   fictional dataset for the recording (#13).
+- `/tvideo setup | record | dub` runs one stage: preflight only, a clip without narration, or narration on an
+  existing clip. No argument keeps the full flow (#14).
 
 ## 1.2.0 — 2026-10-16
 

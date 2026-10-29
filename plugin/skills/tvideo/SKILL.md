@@ -1,5 +1,6 @@
 ---
 name: tvideo
+argument-hint: "[setup | record | dub]"
 description: Turn a real web app into polished how-to / tutorial videos — Playwright records the actual UI with a visible cursor, then a Hyperframes edit adds an intro card, step captions (any language, Thai included), zoom + highlight ring on the control to press, click sounds, music and optional TTS narration, rendered to 1080p MP4. Use this whenever someone wants a tutorial video, how-to video, training video, onboarding video, walkthrough, user guide video or "วิดีโอสอนใช้งาน / คลิปสอน / วิดีโอแนะนำการใช้งานระบบ" of a website or web app, wants to replace live user training with downloadable videos, or wants to re-record such videos after the UI changed — even if they don't say "Playwright" or "Hyperframes".
 ---
 
@@ -26,6 +27,21 @@ way — never hand-edit `index.html`; change `plan.json` / `tvideo.config.json` 
 rebuild.
 
 `<skill>` below means this skill's directory (the folder holding this SKILL.md).
+
+## Starting at one stage
+
+The first word of the skill's arguments picks where to start; anything after it is
+the request (e.g. `/tvideo record the "create order" flow on staging`).
+
+| Argument | Do | Stop after |
+|---|---|---|
+| *(none)* | Phases 0–6 | final render |
+| `setup` | Phase 0 only: report each check as found/missing and fix the gaps | the toolchain is ready |
+| `record` | Phases 0–6, but don't offer narration in the brief | final render, captions + clicks only |
+| `dub` | On an existing clip project (the folder with `plan.json`): `references/narration.md`, then `node build.mjs` and Phase 6 | the narrated render |
+| anything else | List these options and ask which one was meant | — |
+
+`dub` with no clip project in reach: say so and suggest `/tvideo record` first.
 
 ## Phase 0 — Preflight
 
