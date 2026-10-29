@@ -79,6 +79,12 @@ trade-off, recommend the safe option, and let the user decide — then follow it
   real account, say exactly what will be visible, get an explicit OK, and plan
   `mask`s for every personal value (check them on snapshots). If you're unsure
   whether a value is real, ask.
+- **Seed and fixture data.** A fictional account can still show real people: local and
+  staging databases are often filled from repo seeds or fixtures copied from production
+  exports. If you can read the app's repo, grep the seeds/fixtures that feed the screens
+  you'll record for real-looking names, emails, phone numbers and customer codes. If any
+  turn up, seed a dedicated fictional dataset for the recording (e.g. `example.com`
+  emails) rather than masking frame by frame. With only a URL, ask where the data came from.
 - **Irreversible or financial steps** (pay, transfer, send to a real third party,
   delete, publish). Never complete a real payment or other irreversible action
   just to film it. Prefer a sandbox/test mode (test card, staging gateway); if

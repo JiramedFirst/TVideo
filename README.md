@@ -50,7 +50,8 @@ logins, sign in once by hand and save the session (`npx playwright codegen --sav
 
 Recording drives the app for real: forms submit and emails go out. Use staging and a fictional demo account.
 Claude asks before recording against a shared environment and never completes a real payment. It can mask on-screen
-values in the edit. Tutorial videos get passed around, so keep real customer data off screen.
+values in the edit. Tutorial videos get passed around, so keep real customer data off screen. Seed files copied from
+production count too: Claude checks the seeds behind the recorded screens and records against fictional data.
 
 ## Demo
 

@@ -53,7 +53,7 @@ await tl.save();                                      // writes timeline.json + 
 | Business rule rejects the action (break time, capacity, cut-off) | Real config is stricter than test data | Read the on-screen error, pick a valid value dynamically (e.g. first enabled slot), don't fake the rule |
 | Login needs OTP / 2FA | Code arrives out of band | `const code = await waitForOtp()` (from `otp.ts`): clears any stale `otp.txt`, then polls it until it holds a 4-10 character code (spaces/hyphens ignored), returns it and deletes the file. Ask the user to paste the code there during the run (rehearsal too). Call it before the first `tl.step` (or in a step you cut) — the wait is dead air. Or keep login out of the clip via a saved session |
 | Framework dev badge in every frame | Dev servers inject overlays | `createTimeline` hides Next.js/Vite overlays; record against a built/staging app when possible |
-| Demo data looks fake ("test", "QA", "mock-id") | Seeds/test fixtures | Use realistic fictional data in the demo account; mask what you can't change |
+| Demo data looks fake ("test", "QA", "mock-id") | Seeds/test fixtures | Use realistic fictional data in the demo account, never rows copied from production (see SKILL.md, "Seed and fixture data"); mask what you can't change |
 
 ## Takes are kept in `recordings/`
 
