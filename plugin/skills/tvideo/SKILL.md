@@ -30,18 +30,28 @@ rebuild.
 
 ## Starting at one stage
 
-The first word of the skill's arguments picks where to start; anything after it is
-the request (e.g. `/tvideo record the "create order" flow on staging`).
+A mode applies only when the argument's first word is exactly `setup`, `record` or
+`dub`; the rest is the request (e.g. `/tvideo record the "create order" flow on staging`).
+Any other argument is the request itself — run the full flow. Name the mode you picked
+in your first line, so a misread is caught before any work.
 
 | Argument | Do | Stop after |
 |---|---|---|
-| *(none)* | Phases 0–6 | final render |
-| `setup` | Phase 0 only: report each check as found/missing and fix the gaps | the toolchain is ready |
-| `record` | Phases 0–6, but don't offer narration in the brief | final render, captions + clicks only |
-| `dub` | On an existing clip project (the folder with `plan.json`): `references/narration.md`, then `node build.mjs` and Phase 6 | the narrated render |
-| anything else | List these options and ask which one was meant | — |
+| *(none / anything else)* | Phases 0–6 | final render |
+| `setup` | Phase 0 only: report each check as found/missing and fix the gaps | the tools are ready (Chromium comes later with the recorder's `npm i`) |
+| `record` | Phases 0–6, but don't offer narration in the brief (music stays as configured) | final render without narration |
+| `dub` | Narration on a clip already made — see below | the narrated render |
 
-`dub` with no clip project in reach: say so and suggest `/tvideo record` first.
+`dub`:
+1. Phase 0, then find the clip project (the folder with `plan.json` and
+   `timeline.json`). None → say so and suggest `/tvideo record`. Several → ask which.
+2. `node build.mjs` once *before* writing narration: a plan/timeline mismatch must
+   fail here, not after TTS credits are spent.
+3. `references/narration.md`, plus `npm i -D @hyperframes/core` in the clip project
+   so the music dips under the voice (`references/editing.md`, Music).
+4. Phase 5 steps 3–4, then Phase 6 steps 1–3, rendering to
+   `renders/<clip-name>-narrated.mp4` so the delivered captions-only render is kept.
+   Skip Phase 6 step 4: this session recorded nothing, so there is nothing to clean up.
 
 ## Phase 0 — Preflight
 
