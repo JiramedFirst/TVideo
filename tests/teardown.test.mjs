@@ -1,7 +1,7 @@
 // Test of the recorder's globalTeardown alone: fake Playwright output folders,
 // no browser. Covers which folders count as takes (any name, as long as the clip
 // wrote video.webm + timeline.json during this run), rehearsals, where takes go
-// (next to the config, or TV_RECORDINGS_DIR) and a call without a config.
+// (next to the config, or TV_RECORDINGS_DIR) and the warning for a video-less clip.
 //
 //   node --experimental-strip-types tests/teardown.test.mjs
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, utimesSync, writeFileSync } from 'node:fs';
@@ -80,13 +80,13 @@ const names = (list) => list.map((p) => p.split(/[\\/]/).pop()).sort().join();
   check(!existsSync(join(fx.dir, 'recordings')), 'a missing output folder saves nothing and does not throw');
 }
 {
-  // Chained from another teardown with no argument: falls back to ./test-results.
-  mkdirSync(join(away, 'test-results', 'clips-01-x'), { recursive: true });
-  writeFileSync(join(away, 'test-results', 'clips-01-x', 'video.webm'), 'v');
-  writeFileSync(join(away, 'test-results', 'clips-01-x', 'timeline.json'), '[]');
-  let threw = false;
-  try { run(undefined); } catch { threw = true; }
-  check(!threw && names(takes(join(away, 'recordings'))) === 'clips-01-x', 'called without a config, it saves ./test-results takes');
+  // Video off for the project: the take can't be saved, and the user must hear it
+  // before the next run wipes the folder.
+  const fx = fixture([['clips-01-orders', 'novideo']]);
+  const warn = console.warn, said = [];
+  console.warn = (m) => said.push(String(m));
+  try { run(fx.config); } finally { console.warn = warn; }
+  check(said.some((m) => m.includes('no video.webm') && m.includes('clips-01-orders')), 'a filmed clip without video.webm is reported, not skipped silently');
 }
 
 if (failed) {
