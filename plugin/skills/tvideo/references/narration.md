@@ -20,8 +20,9 @@ MP3 and prints its path.
 - `--sample` writes `assets/voice/_sample-<voice>.mp3`: use it to compare voices and
   to test a term before it is in plan.json.
 - `--only` makes the real line of the chosen voice and caches it, so the full run
-  doesn't bill it again. It replaces that line's MP3 (and its `voices.json` entry, if
-  one exists), so don't use it to try a second voice on a voiced clip.
+  doesn't bill it again. On a voiced clip it refreshes that line's `voices.json` entry,
+  and refuses (before billing) when the clip was voiced with another voice/language or
+  the entry points at a hand-made file.
 Have the user play the file: speech recognition can't judge pronunciation in every
 language (the default Whisper `small.en` is no help for Thai).
 

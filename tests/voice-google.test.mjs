@@ -49,7 +49,7 @@ try {
   check(listed.includes('th-TH-Chirp3-HD-Test'), '--list prints the voice name');
   check(calls[0].url === '/voices?languageCode=th-TH', '--list filters by language');
 
-  // Preview: one plan line, cached, voices.json untouched (a partial one would strip the other steps' voices).
+  // Preview on an unvoiced clip: one plan line, cached, no voices.json (a partial one would strip the other steps' voices).
   calls.length = 0;
   const one = await run(['--engine', 'google', '--voice', 'th-TH-Chirp3-HD-Test', '--only', 's01']);
   check(calls.length === 1 && calls[0].body.input.text === 'กด Save', '--only s01 synthesizes just that line');
@@ -59,7 +59,7 @@ try {
 
   calls.length = 0;
   const sample = await run(['--engine', 'google', '--voice', 'th-TH-Chirp3-HD-Test', '--sample', 'เปิด Dashboard']);
-  check(calls.length === 1 && calls[0].body.input.text === 'เปิด Dashboard' && sample.includes('assets/voice/_sample-th-TH-Chirp3-HD-Test.mp3'), '--sample synthesizes the given text and prints a per-voice file');
+  check(calls.length === 1 && calls[0].body.input.text === 'เปิด Dashboard' && sample.includes('assets/voice/_sample-th-TH-Chirp3-HD-Test-th-TH.mp3'), '--sample synthesizes the given text and prints a per-voice file');
   check(!existsSync(join(work, 'voices.json')), '--sample leaves voices.json alone');
   const both = await run(['--engine', 'google', '--voice', 'th-TH-A', '--only', 's01', '--sample', 'x']).then(() => '', String);
   check(both.includes('not both'), '--only with --sample is refused');
@@ -67,6 +67,10 @@ try {
   const noValue = await run(['--engine', 'google', '--voice', 'th-TH-A', '--only']).then(() => '', String);
   const empty = await run(['--engine', 'google', '--voice', 'th-TH-A', '--sample', '']).then(() => '', String);
   check(noValue.includes('--only needs a value') && empty.includes('--sample needs a value') && calls.length === 0, 'a preview flag without a value is refused, nothing billed');
+  const typo = await run(['--engine', 'google', '--voice', 'th-TH-A', '--onyl', 's01']).then(() => '', String);
+  check(typo.includes('unknown flag --onyl') && calls.length === 0, 'a mistyped flag is refused, nothing billed');
+  await run(['--engine=google', '--voice=th-TH-Chirp3-HD-Test', '--only=s01']);
+  check(calls.length === 0, '--name=value form works (s01 already cached, no call)');
 
   calls.length = 0;
   await run(['--engine', 'google', '--voice', 'th-TH-Chirp3-HD-Test']);
@@ -91,6 +95,22 @@ try {
   await run(['--engine', 'google', '--voice', 'th-TH-Chirp3-HD-Test', '--only', 's01']);
   const after = JSON.parse(readFileSync(vPath, 'utf8'));
   check(calls.length === 1 && Math.abs(after.s01.duration - 1.5) < 0.1 && Object.keys(after).join() === 'intro,s01,outro', '--only refreshes its own voices.json entry and keeps the others');
+
+  calls.length = 0;
+  const mixed = await run(['--engine', 'google', '--voice', 'th-TH-Chirp3-HD-Other', '--only', 's01']).then(() => '', String);
+  check(mixed.includes('would mix two voices') && calls.length === 0, '--only with another voice on a voiced clip is refused before billing');
+  writeFileSync(vPath, JSON.stringify({ ...after, s01: { path: 'assets/voice/s01-human.m4a', duration: 2 } }));
+  const human = await run(['--engine', 'google', '--voice', 'th-TH-Chirp3-HD-Test', '--only', 's01']).then(() => '', String);
+  check(human.includes('not made by voice.mjs') && calls.length === 0, '--only never replaces a hand-made voices.json entry');
+  writeFileSync(vPath, '{ broken');
+  const broken = await run(['--engine', 'google', '--voice', 'th-TH-Chirp3-HD-Test', '--only', 'intro']).then(() => '', String);
+  check(broken.length > 0 && calls.length === 0, 'a malformed voices.json fails --only before billing');
+
+  // Numeric step ids (plan.json allows them) match --only.
+  writeFileSync(vPath, JSON.stringify(after));
+  writeFileSync(join(work, 'plan.json'), JSON.stringify({ steps: [{ id: 7, narration: 'เจ็ด' }] }));
+  const numeric = await run(['--engine', 'google', '--voice', 'th-TH-Chirp3-HD-Test', '--only', '7']).then(String, String);
+  check(numeric.includes('assets/voice/7.mp3'), '--only matches a numeric step id');
 
   const noKey = await run(['--engine', 'google', '--voice', 'th-TH-A'], { ...env, GOOGLE_TTS_API_KEY: '' }).then(() => '', String);
   check(noKey.includes('GOOGLE_TTS_API_KEY is not set'), 'missing key fails with a clear message');
