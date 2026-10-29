@@ -27,10 +27,10 @@ const timeline = readJson('timeline.json', null);
 if (!timeline) throw new Error('timeline.json missing — import the recording first (scripts/new-clip.mjs or import.mjs).');
 // Step ids become file names (compositions/step-<id>.html) and element ids, so they
 // must be safe there and unique even on a case-insensitive file system.
-const badIds = plan.steps.map((s) => s.id).filter((id) => !/^[A-Za-z0-9_-]+$/.test(String(id)));
+const badIds = plan.steps.map((s) => s.id).filter((id) => id == null || !/^[A-Za-z0-9_-]+$/.test(String(id)));
 if (badIds.length) throw new Error(`step id(s) ${badIds.map((id) => JSON.stringify(id)).join(', ')} in plan.json: use only letters, digits, - and _.`);
-const lower = plan.steps.map((s) => s.id.toLowerCase());
-const dupIds = plan.steps.map((s) => s.id).filter((id) => lower.filter((l) => l === id.toLowerCase()).length > 1);
+const lower = plan.steps.map((s) => String(s.id).toLowerCase());
+const dupIds = plan.steps.map((s) => String(s.id)).filter((id) => lower.filter((l) => l === id.toLowerCase()).length > 1);
 if (dupIds.length) throw new Error(`step ids ${dupIds.map((id) => JSON.stringify(id)).join(', ')} in plan.json clash (ids must be unique, ignoring case).`);
 if (timeline.length !== plan.steps.length) {
   throw new Error(`plan.json has ${plan.steps.length} steps but timeline.json has ${timeline.length} — they must match 1:1, in order.`);
@@ -203,19 +203,21 @@ const steps = plan.steps.map((s, i) => {
       zIn *= k;
       zOut *= k;
     }
-    tweens.push(`tl.fromTo('#zoom-${s.id}', { scale: 1 }, { scale: ${scale}, duration: ${r(zIn)}, ease: 'power2.inOut' }, ${r(zAt)});`);
+    // Durations come from rounded ends, so rounding never pushes one tween past the next or the scene end.
+    tweens.push(`tl.fromTo('#zoom-${s.id}', { scale: 1 }, { scale: ${scale}, duration: ${r(r(zAt + zIn) - r(zAt))}, ease: 'power2.inOut' }, ${r(zAt)});`);
     // holdFirst: zoom back out as the click plays — the page changes under it, and
     // staying zoomed would frame an empty corner of the next screen.
     const wanted = holdFirst ? Math.max(zAt + 0.8, hold - 0.5) : D - 0.6;
     const zoomOut = Math.min(Math.max(wanted, zAt + zIn), D - zOut);
-    tweens.push(`tl.fromTo('#zoom-${s.id}', { scale: ${scale} }, { scale: 1, duration: ${r(zOut)}, immediateRender: false, ease: 'power2.inOut' }, ${r(zoomOut)});`);
+    tweens.push(`tl.fromTo('#zoom-${s.id}', { scale: ${scale} }, { scale: 1, duration: ${r(r(zoomOut + zOut) - r(zoomOut))}, immediateRender: false, ease: 'power2.inOut' }, ${r(zoomOut)});`);
     if (ring) {
       // Accent ring on the control to press; inside #zoom so it scales with the
       // footage. Only over the HOLD still — once the click plays, the page
       // changes under it and the ring would mark nothing.
       const g = ring, pad = 6;
-      const rs = holdFirst ? start + (z.at ?? 0.3) + 0.4 : start + seg;
       const re = holdFirst ? start + hold : start + dur - 0.6;
+      // Follows the (possibly squeezed) zoom-in; never later than 0.35 s (its fade-in) before re.
+      const rs = Math.max(start, Math.min(holdFirst ? start + zAt + 0.4 : start + seg, re - 0.35));
       overlays.push(`<div id="ring-${s.id}" class="clip ring" data-start="${L(rs)}" data-duration="${r(re - rs)}" data-track-index="1" style="left:${r((g.x - g.w / 2 - pad) * K)}px;top:${r((g.y - g.h / 2 - pad) * K)}px;width:${r((g.w + pad * 2) * K)}px;height:${r((g.h + pad * 2) * K)}px"><span class="ring-inner"></span></div>`);
       tweens.push(`tl.fromTo('#ring-${s.id} .ring-inner', { opacity: 0, scale: 1.25 }, { opacity: 1, scale: 1, duration: 0.35, ease: 'power2.out' }, ${L(rs)});`);
       tweens.push(`tl.fromTo('#ring-${s.id} .ring-inner', { scale: 1 }, { scale: 1.08, duration: 0.45, immediateRender: false, ease: 'sine.inOut', yoyo: true, repeat: ${Math.max(1, Math.floor((re - rs - 0.35) / 0.45) - 1)} }, ${L(rs + 0.35)});`);
@@ -229,6 +231,7 @@ const steps = plan.steps.map((s, i) => {
     // audited, so a misplaced mask is still reported.
     const m = s.mask;
     const from = (holdFirst ? start + hold : start) + (m.after ?? 0);
+    if (L(from) >= D) throw new Error(`step ${s.id}: mask.after ${m.after} is past the end of the step (${r(D)} s on screen) — lower it.`);
     overlays.push(`<div id="mask-${s.id}" class="clip mask" data-start="${L(from)}" data-duration="${toEnd(from)}" data-track-index="1" style="left:${r(m.x * K)}px;top:${r(m.y * K)}px;width:${r(m.w * K)}px;height:${r(m.h * K)}px;font-size:${r((m.fontSize ?? 15) * K)}px;justify-content:${m.align === 'left' ? 'flex-start' : 'flex-end'};background:${m.bg ?? '#fff'};color:${m.color ?? '#141414'}"><span data-layout-ignore>${esc(m.text)}</span></div>`);
   }
   // Own track: the chime rings ~2.5 s, so on the last step it runs into the outro

@@ -210,7 +210,8 @@ are already good captions; copy them over.
    PNGs. Coordinates are in the *recording's* pixels (e.g. 1280×800).
 3. `node build.mjs` then `npx hyperframes check`. It comes back clean on the
    template's output, so investigate any finding (error, warning or info) before
-   rendering. The build also
+   rendering — except a contrast warning whose time falls in a caption's 0.4 s
+   fade-in, which is expected. The build also
    writes `captions.srt` / `captions.vtt` — deliver them next to the MP4.
 4. Verify with your own eyes: `build.mjs` prints where each step lands in the
    OUTPUT timeline (output time ≠ recording time — the intro and holds shift it).

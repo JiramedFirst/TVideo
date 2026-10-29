@@ -153,6 +153,9 @@ const zoomOk = (scene, id) => {
 const withIds = (a, b) => project({ plan: { ...PLAN, steps: [{ ...PLAN.steps[0], id: a }, { ...PLAN.steps[1], id: b }, PLAN.steps[2]] } }).build().error ?? '';
 check(/"s 1".*letters, digits/.test(withIds('s 1', 's02')), 'a step id unsafe as a file name is refused');
 check(/"s01", "S01".*clash/.test(withIds('s01', 'S01')), 'step ids that differ only in case are refused');
+check(withIds(1, 's02') === '', 'a numeric step id builds');
+check(/letters, digits/.test(withIds(undefined, 's02')), 'a missing step id is refused with a reason');
+check(/mask\.after 30 is past the end/.test(project({ plan: { ...PLAN, steps: [{ ...PLAN.steps[0], mask: { x: 1, y: 1, w: 9, h: 9, text: 'x', after: 30 } }, PLAN.steps[1], PLAN.steps[2]] } }).build().error ?? ''), 'a mask that would start after its step is refused');
 check(/must match 1:1/.test(project({ timeline: TIMELINE.slice(0, 2) }).build().error ?? ''), 'plan/timeline step-count mismatch is refused');
 check(/past the end of the footage/.test(project({ timeline: [...TIMELINE.slice(0, 2), { label: 'x', startMs: 12000, endMs: 14000 }] }).build().error ?? ''), 'a step past the end of the footage is refused');
 check(/only 0 tap/.test(project({ clicks: [] }).build().error ?? ''), 'ring: true on a step without taps is refused');
