@@ -13,6 +13,7 @@
 | `TV_LOGGED_IN_SELECTOR` | Selector that is visible once signed in. Use when the app keeps a `/login`-like URL after sign-in; default check is "URL no longer contains `login`". |
 | `TV_OTP_FILE` | File `waitForOtp()` polls (default `otp.txt`). |
 | `TV_REHEARSE=1` | Dry run: no video, no glides/pauses. |
+| `TV_RECORDINGS_DIR` | Where takes are saved after a real run (default `recordings`). |
 
 **Session expiry.** A session saved by hand in `.auth/state.json` is re-checked
 before the clips run. If the app bounces to the login page (or
@@ -57,11 +58,40 @@ await tl.save();                                      // writes timeline.json + 
 
 ## Takes are kept in `recordings/`
 
-`test-results/` is wiped at the start of every Playwright run. After each
-non-rehearsal run the recorder copies every `test-results/clips-*` folder to
-`recordings/<YYYYMMDD-HHMMSS>/` and prints the path; import from there. Rehearsals
-copy nothing. If two configs share an `outputDir` they still wipe each other, so
-give each its own.
+Playwright wipes its output folder (`test-results/`) at the start of every run.
+After each non-rehearsal run the recorder's `globalTeardown` copies every clip
+folder — any folder in a project's `outputDir` holding the `timeline.json` that
+`timeline.ts` writes — to `recordings/<YYYYMMDD-HHMMSS>/` (or
+`$TV_RECORDINGS_DIR/<…>`) and prints the path; import from there. Rehearsals copy
+nothing. If two configs share an `outputDir` they still wipe each other, so give
+each its own.
+
+## Embed in an existing Playwright project
+
+Use this when the app's own Playwright suite is the only practical way in — its
+login comes from repo fixtures (signed cookies, seeded sessions) that
+`TV_USERNAME` / `.auth/state.json` can't reproduce. The clips then live inside that
+project instead of a standalone `recorder/`.
+
+1. Copy `cursor.ts`, `timeline.ts` and `teardown.ts` (plus `otp.ts` if a clip needs
+   it) from `<skill>/templates/recorder/` into a folder of that project, e.g.
+   `e2e/tvideo/`. They only need `@playwright/test`.
+2. Write the clip specs next to them (`e2e/tvideo/clips/01-….spec.ts`), importing
+   `test` from the app's own fixtures file instead of `@playwright/test`, so its
+   login fixture signs the page in. Keep the login out of the timeline (before the
+   first `tl.step`).
+3. Give the clips their own config, so the app's suite keeps its settings and
+   output — e.g. `playwright.tvideo.config.ts` beside the project's config. Copy
+   from the template's `playwright.config.ts`: `video: { mode: 'on', size: viewport }`
+   with the same `viewport`, `launchOptions: { slowMo: 250 }` (0 when
+   `TV_REHEARSE=1`, with video off), `workers: 1`, `retries: 0`, a long `timeout`,
+   `globalTeardown` pointing at the copied `teardown.ts`, and an `outputDir` of its
+   own (e.g. `./test-results-tvideo`). Set `testDir` to the clips folder and keep
+   the app's `baseURL` and any `use` options its fixtures need.
+4. Run `npx playwright test -c playwright.tvideo.config.ts` (with `TV_REHEARSE=1`
+   first). Takes land in `recordings/<timestamp>/` of the folder you run from — set
+   `TV_RECORDINGS_DIR` to put them elsewhere (and git-ignore that folder).
+   Folder names follow the project's spec paths, not `clips-…`; that's fine.
 
 ## Chaining clips without database access
 

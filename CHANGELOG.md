@@ -11,6 +11,9 @@
 - The built composition passes `npx hyperframes check` with no findings: intro, each step and outro are
   sub-compositions in `compositions/`, the intro title is on screen at 0 s (thumbnail), the music credit is 28 px and
   voice clips form one carve group (#10).
+- Recorder `teardown.ts` saves every clip folder that holds a `timeline.json`, from each project's `outputDir`,
+  whatever its name, into `TV_RECORDINGS_DIR` (default `recordings/`); `recording.md` explains running the clips inside
+  an existing Playwright project with its own login fixtures. Test: `tests/teardown.test.mjs` (#9).
 - `voice.mjs --only <id>` / `--sample "<text>"` generate one line to listen to before generating them all;
   `--sample` writes one file per voice, `--only` is cached for the full run and refreshes only its own entry of an
   existing `voices.json` (#11).

@@ -51,6 +51,9 @@ try {
   const clipDir = readdirSync(join(rec, 'test-results')).find((d) => d.startsWith('clips-01-'));
   if (!clipDir) fail('no clip output in test-results/');
   const out = join(rec, 'test-results', clipDir);
+  // globalTeardown saved the take out of test-results/ (the next run would wipe it).
+  const saved = existsSync(join(rec, 'recordings')) ? readdirSync(join(rec, 'recordings')).flatMap((ts) => readdirSync(join(rec, 'recordings', ts))) : [];
+  if (!saved.includes(clipDir)) fail(`take not saved to recordings/ (found: ${saved.join(', ') || 'none'})`);
   for (const f of ['video.webm', 'timeline.json', 'clicks.json']) if (!existsSync(join(out, f))) fail(`recording is missing ${f}`);
   const timeline = JSON.parse(readFileSync(join(out, 'timeline.json'), 'utf8'));
   const clicks = JSON.parse(readFileSync(join(out, 'clicks.json'), 'utf8'));
