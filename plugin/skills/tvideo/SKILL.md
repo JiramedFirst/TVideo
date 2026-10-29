@@ -23,7 +23,7 @@ recorder (Playwright)  ──►  video.webm + timeline.json + clicks.json  ─�
 Because the edit is generated from those files, a re-record after a UI change is
 just: record → `new-clip.mjs` → build → render. Rings follow the control (they
 come from the recorder's click boxes), so nothing needs re-measuring. Keep it that
-way — never hand-edit `index.html`; change `plan.json` / `tvideo.config.json` and
+way — never hand-edit `index.html` or `compositions/`; change `plan.json` / `tvideo.config.json` and
 rebuild.
 
 `<skill>` below means this skill's directory (the folder holding this SKILL.md).

@@ -72,8 +72,10 @@ try {
   execFileSync('npx', ['hyperframes', 'check'], { cwd: prj, stdio: 'inherit' });
   ok('hyperframes check passed');
   const html = readFileSync(join(prj, 'index.html'), 'utf8');
-  const caps = html.match(/id="cap-s\d+"/g) ?? [];
-  const rings = html.match(/id="ring-s\d+"/g) ?? [];
+  // Captions and rings live in the per-step scenes (compositions/step-<id>.html).
+  const scenes = readdirSync(join(prj, 'compositions')).map((f) => readFileSync(join(prj, 'compositions', f), 'utf8')).join('\n');
+  const caps = scenes.match(/id="cap-s\d+"/g) ?? [];
+  const rings = scenes.match(/id="ring-s\d+"/g) ?? [];
   const total = Number(/data-composition-id="main"[^>]*data-duration="([\d.]+)"/.exec(html)?.[1]);
   if (caps.length !== 5) fail(`expected 5 captions, got ${caps.length}`);
   if (rings.length !== 2) fail(`expected 2 highlight rings, got ${rings.length}`);

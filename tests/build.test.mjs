@@ -56,32 +56,43 @@ function project({ plan = PLAN, timeline = TIMELINE, clicks = CLICKS, voices, co
     build() {
       const r = spawnSync('node', ['build.mjs'], { cwd: dir, encoding: 'utf8' });
       if (r.status !== 0) return { error: r.stderr };
-      return { html: readFileSync(join(dir, 'index.html'), 'utf8'), warnings: r.stderr };
+      // index.html hosts one sub-composition per scene: compositions/<id>.html.
+      const scene = (id) => {
+        const f = join(dir, 'compositions', `${id}.html`);
+        return existsSync(f) ? readFileSync(f, 'utf8') : '';
+      };
+      return { html: readFileSync(join(dir, 'index.html'), 'utf8'), scene, warnings: r.stderr };
     },
   };
 }
 const attr = (html, id, name) => new RegExp(`id="${id}"[^>]*?${name}="([^"]*)"`).exec(html)?.[1];
-const stepStart = (html, id) => Number(attr(html, `cap-${id}`, 'data-start'));
 const K = 1.125; // 1280x800 fitted into the 1440x900 stage
 
 {
   const p = project({ voices: { s03: { path: 'assets/v.mp3', duration: 6 } } });
-  const { html, error } = p.build();
+  const { html, scene, error } = p.build();
   check(!error, `builds${error ? `: ${error}` : ''}`);
+  const [s01, s02, s03] = ['s01', 's02', 's03'].map((id) => scene(`step-${id}`));
+  const ids = ['intro', 'step-s01', 'step-s02', 'step-s03', 'outro'];
+  check(ids.every((id) => scene(id).includes(`<div id="${id}" data-composition-id="${id}"`)), 'one scene file per step, plus intro and outro');
+  check(ids.every((id) => html.includes(`<div id="${id}" data-composition-id="${id}" data-composition-src="compositions/${id}.html"`)), 'index.html hosts every scene');
+  check(!/fromTo\('#intro-(title|sub)'/.test(scene('intro')) && scene('intro').includes('id="intro-title"'), 'intro title is on screen from frame 0 (no fade-in)');
+  check(/\.credit \{[^}]*font-size: 28px/.test(scene('outro')), 'music credit is 28 px (type floor)');
   // auto-ring: s02's ring = its click box, padded 6 px, scaled to the stage
-  check(attr(html, 'ring-s02', 'style')?.startsWith(`left:${(600 - 60 - 6) * K}px;top:${(100 - 20 - 6) * K}px`), 'ring: true rings the click box');
-  check(Boolean(attr(html, 'ring-s03', 'style')), 'zoom: {ring: true} rings too');
+  check(attr(s02, 'ring-s02', 'style')?.startsWith(`left:${(600 - 60 - 6) * K}px;top:${(100 - 20 - 6) * K}px`), 'ring: true rings the click box');
+  check(Boolean(attr(s03, 'ring-s03', 'style')), 'zoom: {ring: true} rings too');
   // auto-holdFirst: s02's control was gone after the click → still first, sampled
   // just before the click; the action starts there too (no jump back).
-  check(Number(attr(html, 'h-s02', 'data-start')) === stepStart(html, 's02'), 'gone click → holdFirst (still first)');
-  check(attr(html, 'h-s02', 'src') === 'assets/holds/s02-3.65.png', 'holdFirst still = click − 0.15 s');
-  check(attr(html, 'v-s02', 'data-media-start') === '3.65', 'holdFirst action starts at the same moment');
+  // Scene-local times: 0 is the step's first frame.
+  check(attr(s02, 'h-s02', 'data-start') === '0' && attr(s02, 'cap-s02', 'data-start') === '0', 'gone click → holdFirst (still first)');
+  check(attr(s02, 'h-s02', 'src') === 'assets/holds/s02-3.65.png', 'holdFirst still = click − 0.15 s');
+  check(attr(s02, 'v-s02', 'data-media-start') === '3.65', 'holdFirst action starts at the same moment');
   // s03's control stayed → default: action, then the settled end state.
-  check(attr(html, 'h-s03', 'src') === 'assets/holds/s03-9.30.png', 'default still = step end − 0.2 s');
-  const s03dur = Number(attr(html, 'cap-s03', 'data-duration'));
-  check(s03dur >= 6 + 0.65 - 0.001, `voice paces the step (${s03dur}s ≥ 6.65s)`);
-  check(/class="cap-text" style="font-size:(\d+)px">A long/.exec(html)?.[1] < 40, 'long caption shrinks to fit the band');
-  check(/class="cap-text" style="font-size:40px">Open/.test(html), 'short caption keeps 40 px');
+  check(attr(s03, 'h-s03', 'src') === 'assets/holds/s03-9.30.png', 'default still = step end − 0.2 s');
+  const s03dur = Number(attr(s03, 'cap-s03', 'data-duration'));
+  check(s03dur >= 6 + 0.65 - 0.001 && attr(html, 'step-s03', 'data-duration') === String(s03dur), `voice paces the step (${s03dur}s ≥ 6.65s)`);
+  check(/class="cap-text" style="font-size:(\d+)px">A long/.exec(s03)?.[1] < 40, 'long caption shrinks to fit the band');
+  check(/class="cap-text" style="font-size:40px">Open/.test(s01), 'short caption keeps 40 px');
   check(html.includes('src="assets/vendor/gsap.min.js"') && existsSync(join(p.dir, 'assets/vendor/gsap.min.js')), 'GSAP is local (offline render)');
   const srt = readFileSync(join(p.dir, 'captions.srt'), 'utf8');
   check((srt.match(/-->/g) ?? []).length === 3 && srt.startsWith('1\n00:00:0'), 'captions.srt has one cue per step');
@@ -90,14 +101,20 @@ const K = 1.125; // 1280x800 fitted into the 1440x900 stage
   // Flipping holdFirst moves the sample point → a new still, not the cached one.
   p.put('plan.json', { ...PLAN, steps: PLAN.steps.map((s) => (s.id === 's02' ? { ...s, holdFirst: false } : s)) });
   const again = p.build();
-  check(attr(again.html, 'h-s02', 'src') === 'assets/holds/s02-5.80.png' && existsSync(join(p.dir, 'assets/holds/s02-5.80.png')), 'still cache is keyed on time');
+  check(attr(again.scene('step-s02'), 'h-s02', 'src') === 'assets/holds/s02-5.80.png' && existsSync(join(p.dir, 'assets/holds/s02-5.80.png')), 'still cache is keyed on time');
+
+  // A re-record with fewer steps leaves no stale scene behind.
+  p.put('plan.json', { ...PLAN, steps: PLAN.steps.slice(0, 2) });
+  p.put('timeline.json', TIMELINE.slice(0, 2));
+  const fewer = p.build();
+  check(!fewer.error && fewer.scene('step-s02') && !existsSync(join(p.dir, 'compositions/step-s03.html')), 'rebuild drops scene files of removed steps');
 }
 {
   // v1 recorder: clicks.json is bare ms. Explicit rings still build; auto-ring
   // explains itself instead of guessing.
   const legacy = [3800, 6500];
   const ok = project({ clicks: legacy, plan: { ...PLAN, steps: [PLAN.steps[0], { id: 's02', caption: 'x', holdFirst: true, zoom: { ring: { x: 600, y: 100, w: 120, h: 40 } } }, { id: 's03', caption: 'y' }] } }).build();
-  check(!ok.error && ok.html.includes('id="ring-s02"'), 'v1 clicks.json + explicit ring builds');
+  check(!ok.error && ok.scene('step-s02').includes('id="ring-s02"'), 'v1 clicks.json + explicit ring builds');
   check(/has no box/.test(project({ clicks: legacy }).build().error ?? ''), 'v1 clicks.json + ring: true is refused with a reason');
 }
 check(/must match 1:1/.test(project({ timeline: TIMELINE.slice(0, 2) }).build().error ?? ''), 'plan/timeline step-count mismatch is refused');
