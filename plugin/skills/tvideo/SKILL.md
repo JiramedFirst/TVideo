@@ -95,7 +95,8 @@ Collect, in one short round, what changes the work:
    30–120 s each (sign in, create X, edit/cancel X, download Y…). Ask for the
    order the viewer should watch them in.
 4. **Language** of the UI and captions (`TV_LOCALE`, `lang`).
-5. **Brand**: logo file, 1–2 colors, font if the language needs one (bundled
+5. **Brand**: logo file, a `theme` (`navy`, `purple`, `teal`, `blue`) or 1–2 colors,
+   or a reference frame to match (see `references/editing.md`), font if the language needs one (bundled
    IBM Plex Sans Thai covers Thai + Latin). Defaults are a neutral navy/green.
 6. **Audio**: captions + click SFX are the default. Music: bundled CC BY track or
    none. Narration is optional (HeyGen or Google Cloud TTS) and costs TTS
@@ -183,7 +184,8 @@ node <skill>/scripts/new-clip.mjs clip-02 recorder/recordings/<ts>/<that-folder>
 ```
 
 In `tvideo.config.json`: set `lang` and `readingCharsPerSec` (≈15 English, ≈12
-Thai — slower scripts read slower), the brand colours, and `logo` (a path, or
+Thai — slower scripts read slower), the `theme` or brand colours (a brand colour
+overrides the theme's), and `logo` (a path, or
 `null` for text-only cards). Keep `music.credit` — the bundled track is CC BY.
 
 `plan.json` steps map **1:1, in order** to the recorder's `tl.step`s (the build
