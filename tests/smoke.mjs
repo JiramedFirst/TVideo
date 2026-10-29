@@ -9,7 +9,7 @@
 // Needs Node ≥ 20, ffmpeg/ffprobe, and Playwright's chromium (`npx playwright
 // install chromium`). Set TV_SMOKE_NODE_MODULES to an existing node_modules with
 // @playwright/test to skip the npm install.
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, symlinkSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -69,11 +69,30 @@ try {
   // The flash must be found: without it every time is off by fixture setup.
   if (!/sync offset -?\d+ ms/.test(importLog)) fail('import did not find the sync flash');
   execFileSync('node', ['build.mjs'], { cwd: prj, stdio: 'inherit' });
-  execFileSync('npx', ['hyperframes', 'check'], { cwd: prj, stdio: 'inherit' });
-  ok('hyperframes check passed');
+  // The template's output is check-clean: any finding (warning or info too) fails —
+  // except a contrast sample that lands inside a caption's 0.4 s fade-in. Check samples
+  // contrast at fixed fractions of the length, and a live recording's length varies
+  // per run, so that one would make smoke flaky without saying anything about the template.
+  const chk = spawnSync('npx', ['hyperframes', 'check', '--json'], { cwd: prj, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  if (chk.error) fail(`could not run npx hyperframes check: ${chk.error.message}`);
+  let report;
+  try { report = JSON.parse(chk.stdout); } catch { fail(`hyperframes check --json printed no JSON (exit ${chk.status}): ${(chk.stderr ?? '').slice(-800)}`); }
+  const findings = [];
+  const walk = (o) => {
+    if (Array.isArray(o)) o.forEach(walk);
+    else if (o && typeof o === 'object') {
+      if (typeof o.code === 'string' && o.severity && !(o.severity === 'warning' && o.code.startsWith('contrast'))) findings.push(`${o.severity} ${o.code}: ${o.message ?? ''}`);
+      Object.values(o).forEach(walk);
+    }
+  };
+  walk(report);
+  if (chk.status !== 0 || !report.ok || findings.length) fail(`hyperframes check is not clean (exit ${chk.status}):\n${findings.join('\n')}`);
+  ok('hyperframes check clean (no findings)');
   const html = readFileSync(join(prj, 'index.html'), 'utf8');
-  const caps = html.match(/id="cap-s\d+"/g) ?? [];
-  const rings = html.match(/id="ring-s\d+"/g) ?? [];
+  // Captions and rings live in the per-step scenes (compositions/step-<id>.html).
+  const scenes = readdirSync(join(prj, 'compositions')).map((f) => readFileSync(join(prj, 'compositions', f), 'utf8')).join('\n');
+  const caps = scenes.match(/id="cap-s\d+"/g) ?? [];
+  const rings = scenes.match(/id="ring-s\d+"/g) ?? [];
   const total = Number(/data-composition-id="main"[^>]*data-duration="([\d.]+)"/.exec(html)?.[1]);
   if (caps.length !== 5) fail(`expected 5 captions, got ${caps.length}`);
   if (rings.length !== 2) fail(`expected 2 highlight rings, got ${rings.length}`);

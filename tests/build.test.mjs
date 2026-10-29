@@ -56,32 +56,64 @@ function project({ plan = PLAN, timeline = TIMELINE, clicks = CLICKS, voices, co
     build() {
       const r = spawnSync('node', ['build.mjs'], { cwd: dir, encoding: 'utf8' });
       if (r.status !== 0) return { error: r.stderr };
-      return { html: readFileSync(join(dir, 'index.html'), 'utf8'), warnings: r.stderr };
+      // index.html hosts one sub-composition per scene: compositions/<id>.html.
+      const scene = (id) => {
+        const f = join(dir, 'compositions', `${id}.html`);
+        return existsSync(f) ? readFileSync(f, 'utf8') : '';
+      };
+      return { html: readFileSync(join(dir, 'index.html'), 'utf8'), scene, warnings: r.stderr };
     },
   };
 }
 const attr = (html, id, name) => new RegExp(`id="${id}"[^>]*?${name}="([^"]*)"`).exec(html)?.[1];
-const stepStart = (html, id) => Number(attr(html, `cap-${id}`, 'data-start'));
 const K = 1.125; // 1280x800 fitted into the 1440x900 stage
+const ms = (v) => Math.round(Number(v) * 1000);
+// Scene hosts in index.html, in order, timed as written (whole ms).
+const hosts = (html) => [...html.matchAll(/<div id="([^"]+)" data-composition-id="[^"]+" data-composition-src="[^"]+" data-start="([^"]+)" data-duration="([^"]+)"/g)]
+  .map(([, id, s, d]) => ({ id, start: ms(s), dur: ms(d) }));
+// The zoom-in and zoom-out of one step must not overlap and must end inside the scene.
+const zoomOk = (scene, id) => {
+  const [zin, zout] = [...scene.matchAll(new RegExp(`fromTo\\('#zoom-${id}'.*?duration: ([\\d.]+).*?\\}, ([\\d.]+)\\);`, 'g'))].map(([, d, at]) => ({ d: ms(d), at: ms(at) }));
+  return Boolean(zin && zout) && zout.at >= zin.at + zin.d && zout.at + zout.d <= ms(attr(scene, `cap-${id}`, 'data-duration'));
+};
 
 {
   const p = project({ voices: { s03: { path: 'assets/v.mp3', duration: 6 } } });
-  const { html, error } = p.build();
+  const { html, scene, error } = p.build();
   check(!error, `builds${error ? `: ${error}` : ''}`);
+  const [s01, s02, s03] = ['s01', 's02', 's03'].map((id) => scene(`step-${id}`));
+  const ids = ['intro', 'step-s01', 'step-s02', 'step-s03', 'outro'];
+  check(ids.every((id) => scene(id).includes(`<div id="${id}" data-composition-id="${id}"`)), 'one scene file per step, plus intro and outro');
+  check(ids.every((id) => html.includes(`<div id="${id}" data-composition-id="${id}" data-composition-src="compositions/${id}.html"`)), 'index.html hosts every scene');
+  check(!/fromTo\('#intro-(title|sub)'/.test(scene('intro')) && scene('intro').includes('id="intro-title"'), 'intro title is on screen from frame 0 (no fade-in)');
+  check(/\.credit \{[^}]*font-size: 28px/.test(scene('outro')), 'music credit is 28 px (type floor)');
+  const hs = hosts(html);
+  const rootEnd = ms(/data-composition-id="main"[^>]*data-duration="([\d.]+)"/.exec(html)?.[1]);
+  check(hs.map((h) => h.id).join() === ids.join() && hs[0].start === 0 && hs.every((h, i) => h.start + h.dur === (hs[i + 1]?.start ?? rootEnd)),
+    'scene hosts meet exactly: intro → steps → outro → root end');
+  // Non-zero scene-local offsets, and the last clip of a step ends on the scene's end.
+  const end = (sc, id) => ms(attr(sc, id, 'data-start')) + ms(attr(sc, id, 'data-duration'));
+  check(ms(attr(s02, 'v-s02', 'data-start')) > 0 && attr(s02, 'v-s02', 'data-start') === attr(s02, 'h-s02', 'data-duration'), 'holdFirst: the action starts where the still ends (local time)');
+  check(ms(attr(s03, 'h-s03', 'data-start')) > 0 && attr(s03, 'h-s03', 'data-start') === attr(s03, 'v-s03', 'data-duration'), 'default: the still starts where the action ends (local time)');
+  check(attr(s03, 'ring-s03', 'data-start') === attr(s03, 'h-s03', 'data-start'), 'ring starts with the still (local time)');
+  check(end(s02, 'v-s02') === ms(attr(s02, 'cap-s02', 'data-duration')) && end(s03, 'h-s03') === ms(attr(s03, 'cap-s03', 'data-duration'))
+    && attr(s03, 'cap-s03', 'data-duration') === attr(html, 'step-s03', 'data-duration'), 'footage and caption reach the scene end exactly');
+  check(zoomOk(s02, 's02') && zoomOk(s03, 's03'), 'zoom-out follows the zoom-in and ends inside the step');
   // auto-ring: s02's ring = its click box, padded 6 px, scaled to the stage
-  check(attr(html, 'ring-s02', 'style')?.startsWith(`left:${(600 - 60 - 6) * K}px;top:${(100 - 20 - 6) * K}px`), 'ring: true rings the click box');
-  check(Boolean(attr(html, 'ring-s03', 'style')), 'zoom: {ring: true} rings too');
+  check(attr(s02, 'ring-s02', 'style')?.startsWith(`left:${(600 - 60 - 6) * K}px;top:${(100 - 20 - 6) * K}px`), 'ring: true rings the click box');
+  check(Boolean(attr(s03, 'ring-s03', 'style')), 'zoom: {ring: true} rings too');
   // auto-holdFirst: s02's control was gone after the click → still first, sampled
   // just before the click; the action starts there too (no jump back).
-  check(Number(attr(html, 'h-s02', 'data-start')) === stepStart(html, 's02'), 'gone click → holdFirst (still first)');
-  check(attr(html, 'h-s02', 'src') === 'assets/holds/s02-3.65.png', 'holdFirst still = click − 0.15 s');
-  check(attr(html, 'v-s02', 'data-media-start') === '3.65', 'holdFirst action starts at the same moment');
+  // Scene-local times: 0 is the step's first frame.
+  check(attr(s02, 'h-s02', 'data-start') === '0' && attr(s02, 'cap-s02', 'data-start') === '0', 'gone click → holdFirst (still first)');
+  check(attr(s02, 'h-s02', 'src') === 'assets/holds/s02-3.65.png', 'holdFirst still = click − 0.15 s');
+  check(attr(s02, 'v-s02', 'data-media-start') === '3.65', 'holdFirst action starts at the same moment');
   // s03's control stayed → default: action, then the settled end state.
-  check(attr(html, 'h-s03', 'src') === 'assets/holds/s03-9.30.png', 'default still = step end − 0.2 s');
-  const s03dur = Number(attr(html, 'cap-s03', 'data-duration'));
-  check(s03dur >= 6 + 0.65 - 0.001, `voice paces the step (${s03dur}s ≥ 6.65s)`);
-  check(/class="cap-text" style="font-size:(\d+)px">A long/.exec(html)?.[1] < 40, 'long caption shrinks to fit the band');
-  check(/class="cap-text" style="font-size:40px">Open/.test(html), 'short caption keeps 40 px');
+  check(attr(s03, 'h-s03', 'src') === 'assets/holds/s03-9.30.png', 'default still = step end − 0.2 s');
+  const s03dur = Number(attr(s03, 'cap-s03', 'data-duration'));
+  check(s03dur >= 6 + 0.65 - 0.001 && attr(html, 'step-s03', 'data-duration') === String(s03dur), `voice paces the step (${s03dur}s ≥ 6.65s)`);
+  check(/class="cap-text" style="font-size:(\d+)px">A long/.exec(s03)?.[1] < 40, 'long caption shrinks to fit the band');
+  check(/class="cap-text" style="font-size:40px">Open/.test(s01), 'short caption keeps 40 px');
   check(html.includes('src="assets/vendor/gsap.min.js"') && existsSync(join(p.dir, 'assets/vendor/gsap.min.js')), 'GSAP is local (offline render)');
   const srt = readFileSync(join(p.dir, 'captions.srt'), 'utf8');
   check((srt.match(/-->/g) ?? []).length === 3 && srt.startsWith('1\n00:00:0'), 'captions.srt has one cue per step');
@@ -90,16 +122,40 @@ const K = 1.125; // 1280x800 fitted into the 1440x900 stage
   // Flipping holdFirst moves the sample point → a new still, not the cached one.
   p.put('plan.json', { ...PLAN, steps: PLAN.steps.map((s) => (s.id === 's02' ? { ...s, holdFirst: false } : s)) });
   const again = p.build();
-  check(attr(again.html, 'h-s02', 'src') === 'assets/holds/s02-5.80.png' && existsSync(join(p.dir, 'assets/holds/s02-5.80.png')), 'still cache is keyed on time');
+  check(attr(again.scene('step-s02'), 'h-s02', 'src') === 'assets/holds/s02-5.80.png' && existsSync(join(p.dir, 'assets/holds/s02-5.80.png')), 'still cache is keyed on time');
+
+  // A re-record with fewer steps leaves no stale scene behind.
+  p.put('plan.json', { ...PLAN, steps: PLAN.steps.slice(0, 2) });
+  p.put('timeline.json', TIMELINE.slice(0, 2));
+  const fewer = p.build();
+  check(!fewer.error && fewer.scene('step-s02') && !existsSync(join(p.dir, 'compositions/step-s03.html')), 'rebuild drops scene files of removed steps');
 }
 {
   // v1 recorder: clicks.json is bare ms. Explicit rings still build; auto-ring
   // explains itself instead of guessing.
   const legacy = [3800, 6500];
   const ok = project({ clicks: legacy, plan: { ...PLAN, steps: [PLAN.steps[0], { id: 's02', caption: 'x', holdFirst: true, zoom: { ring: { x: 600, y: 100, w: 120, h: 40 } } }, { id: 's03', caption: 'y' }] } }).build();
-  check(!ok.error && ok.html.includes('id="ring-s02"'), 'v1 clicks.json + explicit ring builds');
+  check(!ok.error && ok.scene('step-s02').includes('id="ring-s02"'), 'v1 clicks.json + explicit ring builds');
   check(/has no box/.test(project({ clicks: legacy }).build().error ?? ''), 'v1 clicks.json + ring: true is refused with a reason');
 }
+{
+  // Steps shorter than their zoom: s01 (0.8 s action, short caption) would start
+  // zooming out mid zoom-in; s02 (holdFirst by hand, no ring) would end zoomed in.
+  // One-character captions last 1.0667 s, which rounds start and length apart.
+  const r = project({
+    timeline: [{ startMs: 500, endMs: 1300 }, { startMs: 3000, endMs: 4000 }, { startMs: 6000, endMs: 6500 }],
+    plan: { ...PLAN, steps: [{ id: 's01', caption: 'G', zoom: {} }, { id: 's02', caption: 'Click it now ok', holdFirst: true, zoom: { at: 0.45 } }, { id: 's03', caption: 'x' }] },
+  }).build();
+  check(!r.error && zoomOk(r.scene('step-s01'), 's01') && zoomOk(r.scene('step-s02'), 's02'), 'a step shorter than its zoom still zooms in, then out, inside the step');
+  const hs = hosts(r.html ?? '');
+  check(hs.length === 5 && hs.every((h, i) => i === 4 || h.start + h.dur === hs[i + 1].start), 'scene hosts meet exactly when rounding would leave a 1 ms gap');
+}
+const withIds = (a, b) => project({ plan: { ...PLAN, steps: [{ ...PLAN.steps[0], id: a }, { ...PLAN.steps[1], id: b }, PLAN.steps[2]] } }).build().error ?? '';
+check(/"s 1".*letters, digits/.test(withIds('s 1', 's02')), 'a step id unsafe as a file name is refused');
+check(/"s01", "S01".*clash/.test(withIds('s01', 'S01')), 'step ids that differ only in case are refused');
+check(withIds(1, 's02') === '', 'a numeric step id builds');
+check(/letters, digits/.test(withIds(undefined, 's02')), 'a missing step id is refused with a reason');
+check(/mask\.after 30 is past the end/.test(project({ plan: { ...PLAN, steps: [{ ...PLAN.steps[0], mask: { x: 1, y: 1, w: 9, h: 9, text: 'x', after: 30 } }, PLAN.steps[1], PLAN.steps[2]] } }).build().error ?? ''), 'a mask that would start after its step is refused');
 check(/must match 1:1/.test(project({ timeline: TIMELINE.slice(0, 2) }).build().error ?? ''), 'plan/timeline step-count mismatch is refused');
 check(/past the end of the footage/.test(project({ timeline: [...TIMELINE.slice(0, 2), { label: 'x', startMs: 12000, endMs: 14000 }] }).build().error ?? ''), 'a step past the end of the footage is refused');
 check(/only 0 tap/.test(project({ clicks: [] }).build().error ?? ''), 'ring: true on a step without taps is refused');

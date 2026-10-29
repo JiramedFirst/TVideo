@@ -11,7 +11,7 @@
 | Validation error on submit that tests never hit | Real environment config (breaks, capacity, cut-off, required fields) | Read the error on the failure screenshot; choose valid values dynamically |
 | Preview stutters / audio choppy | Studio seeks across many windows of one long-GOP file | `import.mjs` makes footage all-intra; judge timing from a draft render |
 | `duplicate_audio_track` × hundreds | `<audio>` without `data-duration` | Template sets it; keep it if you add sounds |
-| `check` reports contrast < 3:1 on a caption badge at one timestamp | Sampled during the caption's 0.4 s fade-in | Expected; confirm a mid-step snapshot is readable |
+| `check` reports any finding (e.g. contrast < 3:1 on a caption badge) | The template's output is check-clean, so something in `plan.json`, the config or an edited `build.mjs` caused it — except a contrast warning sampled during a caption's 0.4 s fade-in, which is expected (check samples at fixed fractions of the length) | Investigate it: snapshot the reported time, fix the input or the structure (Hyperframes has no rule suppression) |
 | `stdout` JSON truncated at 64 KB in a node script | `process.exit()` before the pipe drained | `process.stdout.write(data, () => process.exit(0))` |
 | TTS "free voice-generation time left" error | Quota exhausted | See narration.md → Quota; keep existing voice files |
 | A narrated word is mispronounced | Script form of the term | Latin script for English terms; local spelling for local brand names; regenerate only that line |

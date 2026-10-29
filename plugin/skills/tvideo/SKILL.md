@@ -23,7 +23,7 @@ recorder (Playwright)  ──►  video.webm + timeline.json + clicks.json  ─�
 Because the edit is generated from those files, a re-record after a UI change is
 just: record → `new-clip.mjs` → build → render. Rings follow the control (they
 come from the recorder's click boxes), so nothing needs re-measuring. Keep it that
-way — never hand-edit `index.html`; change `plan.json` / `tvideo.config.json` and
+way — never hand-edit `index.html` or `compositions/`; change `plan.json` / `tvideo.config.json` and
 rebuild.
 
 `<skill>` below means this skill's directory (the folder holding this SKILL.md).
@@ -208,8 +208,10 @@ are already good captions; copy them over.
    `node <skill>/scripts/frames.mjs assets/footage.mp4 frames <t1> <t2> …` (e.g.
    each step's `endMs` − 0.3 s for the settled result) and read the full-size
    PNGs. Coordinates are in the *recording's* pixels (e.g. 1280×800).
-3. `node build.mjs` then `npx hyperframes check`. Fix every error; contrast
-   warnings during a caption's fade-in are expected and harmless. The build also
+3. `node build.mjs` then `npx hyperframes check`. It comes back clean on the
+   template's output, so investigate any finding (error, warning or info) before
+   rendering — except a contrast warning whose time falls in a caption's 0.4 s
+   fade-in, which is expected. The build also
    writes `captions.srt` / `captions.vtt` — deliver them next to the MP4.
 4. Verify with your own eyes: `build.mjs` prints where each step lands in the
    OUTPUT timeline (output time ≠ recording time — the intro and holds shift it).

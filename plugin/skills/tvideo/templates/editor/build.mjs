@@ -1,6 +1,10 @@
-// TVideo editor: build a Hyperframes composition (index.html) for one tutorial clip.
+// TVideo editor: build a Hyperframes composition (index.html + compositions/) for one tutorial clip.
 //
 //   node build.mjs            # reads tvideo.config.json + plan.json + timeline.json [+ clicks.json, voices.json]
+//
+// index.html holds the background, every <audio> and one host per scene; the
+// intro, each step and the outro are sub-compositions in compositions/<id>.html,
+// each with its own timeline in local time (0 = the scene's start).
 //
 // Each step plays its source range of the screen recording, then holds a still
 // until the longest of: the action, the narration line (voices.json, optional),
@@ -10,7 +14,7 @@
 // text-only cards; no assets/sfx → silent clicks; no music → no bed; no voices →
 // caption-paced.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -21,6 +25,13 @@ const plan = readJson('plan.json', null);
 if (!plan) throw new Error('plan.json missing — copy plan.example.json and edit it.');
 const timeline = readJson('timeline.json', null);
 if (!timeline) throw new Error('timeline.json missing — import the recording first (scripts/new-clip.mjs or import.mjs).');
+// Step ids become file names (compositions/step-<id>.html) and element ids, so they
+// must be safe there and unique even on a case-insensitive file system.
+const badIds = plan.steps.map((s) => s.id).filter((id) => id == null || !/^[A-Za-z0-9_-]+$/.test(String(id)));
+if (badIds.length) throw new Error(`step id(s) ${badIds.map((id) => JSON.stringify(id)).join(', ')} in plan.json: use only letters, digits, - and _.`);
+const lower = plan.steps.map((s) => String(s.id).toLowerCase());
+const dupIds = plan.steps.map((s) => String(s.id)).filter((id) => lower.filter((l) => l === id.toLowerCase()).length > 1);
+if (dupIds.length) throw new Error(`step ids ${dupIds.map((id) => JSON.stringify(id)).join(', ')} in plan.json clash (ids must be unique, ignoring case).`);
 if (timeline.length !== plan.steps.length) {
   throw new Error(`plan.json has ${plan.steps.length} steps but timeline.json has ${timeline.length} — they must match 1:1, in order.`);
 }
@@ -96,7 +107,7 @@ function holdFrame(id, t) {
   return out;
 }
 
-const media = [], overlays = [], tweens = [], audios = [];
+const audios = [];
 let aid = 0;
 // Every <audio> carries its real length: an open-ended one counts as playing to the
 // end of the composition, so every SFX would "overlap" every later one.
@@ -106,11 +117,12 @@ const lengthOf = (src) => {
   return probed.get(src);
 };
 const sfx = (name) => (cfg.sfx === false ? null : existsSync(`assets/sfx/${name}.mp3`) ? `assets/sfx/${name}.mp3` : null);
-const sound = (src, at, vol, track = 6, dur) => {
+const sound = (src, at, vol, track = 6, dur, group) => {
   if (!src) return;
-  audios.push(`<audio id="a${++aid}" src="${src}" data-start="${r(at)}" data-duration="${r(dur ?? lengthOf(src))}" data-track-index="${track}" data-volume="${vol}"></audio>`);
+  audios.push(`<audio id="a${++aid}" src="${src}" data-start="${r(at)}" data-duration="${r(dur ?? lengthOf(src))}" data-track-index="${track}" data-volume="${vol}"${group ? ` data-audio-group="${group}"` : ''}></audio>`);
 };
-const voice = (id, at) => voices[id] && sound(voices[id].path, at, 1, 3, voices[id].duration);
+// One group for every voice line, so carve.mjs ducks the bed under the group, not a list of clip ids.
+const voice = (id, at) => voices[id] && sound(voices[id].path, at, 1, 3, voices[id].duration, 'voice');
 
 let T = 0;
 const introDur = Math.max(INTRO_MIN, 0.4 + voiceDur('intro') + BREATH);
@@ -148,15 +160,25 @@ const steps = plan.steps.map((s, i) => {
   const minHold = ring ? RING_MIN_HOLD : 0.2;
   const dur = Math.max(seg + minHold, readDur(s.caption), VOICE_LEAD + voiceDur(s.id) + BREATH);
   const start = T;
+  // The step is its own scene: everything inside it is timed from the step start.
+  const L = (t) => r(t - start);
+  // The scene's length as its host writes it: the next host's rounded start minus
+  // this one's. Whatever must reach the scene end ends on D, never on r(own length),
+  // or a 1 ms gap renders as a background-only frame.
+  const D = r(r(start + dur) - r(start));
+  const toEnd = (t) => r(D - L(t));
+  const media = [], overlays = [], tweens = [];
+  let origin = '';
   const hold = dur - seg;
   const vStart = holdFirst ? start + hold : start;
   const hStart = holdFirst ? start : start + seg;
-  media.push(`<video id="v-${s.id}" class="clip shot" src="${plan.footage}" muted playsinline data-start="${r(vStart)}" data-duration="${r(seg)}" data-media-start="${r(a)}" data-track-index="0"></video>`);
-  if (hold > 0.04) {
+  const hasHold = hold > 0.04;
+  media.push(`<video id="v-${s.id}" class="clip shot" src="${plan.footage}" muted playsinline data-hf-media-start-basis="local" data-start="${L(vStart)}" data-duration="${holdFirst || !hasHold ? toEnd(vStart) : L(hStart)}" data-media-start="${r(a)}" data-track-index="0"></video>`);
+  if (hasHold) {
     // holdFirst: the frame the action starts from (no click data → just before
     // the step). Otherwise `b - 0.2`, the settled result.
     const still = holdFirst ? (a > a0 ? a : Math.max(0, a0 - 0.35)) : b - 0.2;
-    media.push(`<img id="h-${s.id}" class="clip shot" src="${holdFrame(s.id, still)}" data-start="${r(hStart)}" data-duration="${r(hold)}" data-track-index="0" alt="" />`);
+    media.push(`<img id="h-${s.id}" class="clip shot" src="${holdFrame(s.id, still)}" data-start="${L(hStart)}" data-duration="${holdFirst ? L(vStart) : toEnd(hStart)}" data-track-index="0" alt="" />`);
   }
   voice(s.id, start + VOICE_LEAD);
   // A click sound on every recorded press inside this step, mapped from source
@@ -168,36 +190,55 @@ const steps = plan.steps.map((s, i) => {
     // other point P lands at O + (P − O) × scale, which pushes an off-origin
     // control toward the frame edge and can crop it.
     const zx = z.x ?? ring?.x ?? SRC_W / 2, zy = z.y ?? ring?.y ?? SRC_H / 2;
-    tweens.push(`tl.set('#zoom', { transformOrigin: '${r((zx / SRC_W) * 100)}% ${r((zy / SRC_H) * 100)}%' }, ${r(start)});`);
-    tweens.push(`tl.to('#zoom', { scale: ${z.scale ?? 1.5}, duration: 0.7, ease: 'power2.inOut' }, ${r(start + (z.at ?? 0.3))});`);
+    origin = ` style="transform-origin:${r((zx / SRC_W) * 100)}% ${r((zy / SRC_H) * 100)}%"`;
+    const scale = z.scale ?? 1.5;
+    // Scene-local times. The zoom-out may not start before the zoom-in ends (its
+    // fromTo would snap to full scale) nor end after the scene (the next scene
+    // starts at scale 1, a visible cut).
+    let zAt = z.at ?? 0.3, zIn = 0.7, zOut = 0.6;
+    if (zAt + zIn + zOut > D) {
+      // A step shorter than the zoom: squeeze both tweens into it, still ending at scale 1.
+      zAt = Math.min(zAt, D / 2);
+      const k = (D - zAt) / (zIn + zOut);
+      zIn *= k;
+      zOut *= k;
+    }
+    // Durations come from rounded ends, so rounding never pushes one tween past the next or the scene end.
+    tweens.push(`tl.fromTo('#zoom-${s.id}', { scale: 1 }, { scale: ${scale}, duration: ${r(r(zAt + zIn) - r(zAt))}, ease: 'power2.inOut' }, ${r(zAt)});`);
     // holdFirst: zoom back out as the click plays — the page changes under it, and
     // staying zoomed would frame an empty corner of the next screen.
-    const zoomOut = holdFirst ? Math.max(start + (z.at ?? 0.3) + 0.8, start + hold - 0.5) : start + dur - 0.6;
-    tweens.push(`tl.to('#zoom', { scale: 1, duration: 0.6, ease: 'power2.inOut' }, ${r(zoomOut)});`);
+    const wanted = holdFirst ? Math.max(zAt + 0.8, hold - 0.5) : D - 0.6;
+    const zoomOut = Math.min(Math.max(wanted, zAt + zIn), D - zOut);
+    tweens.push(`tl.fromTo('#zoom-${s.id}', { scale: ${scale} }, { scale: 1, duration: ${r(r(zoomOut + zOut) - r(zoomOut))}, immediateRender: false, ease: 'power2.inOut' }, ${r(zoomOut)});`);
     if (ring) {
       // Accent ring on the control to press; inside #zoom so it scales with the
       // footage. Only over the HOLD still — once the click plays, the page
       // changes under it and the ring would mark nothing.
       const g = ring, pad = 6;
-      const rs = holdFirst ? start + (z.at ?? 0.3) + 0.4 : start + seg;
       const re = holdFirst ? start + hold : start + dur - 0.6;
-      overlays.push(`<div id="ring-${s.id}" class="clip ring" data-start="${r(rs)}" data-duration="${r(re - rs)}" data-track-index="1" style="left:${r((g.x - g.w / 2 - pad) * K)}px;top:${r((g.y - g.h / 2 - pad) * K)}px;width:${r((g.w + pad * 2) * K)}px;height:${r((g.h + pad * 2) * K)}px"><div class="ring-inner"></div></div>`);
-      tweens.push(`tl.fromTo('#ring-${s.id} .ring-inner', { opacity: 0, scale: 1.25 }, { opacity: 1, scale: 1, duration: 0.35, ease: 'power2.out' }, ${r(rs)});`);
-      tweens.push(`tl.to('#ring-${s.id} .ring-inner', { scale: 1.08, duration: 0.45, ease: 'sine.inOut', yoyo: true, repeat: ${Math.max(1, Math.floor((re - rs - 0.35) / 0.45) - 1)} }, ${r(rs + 0.35)});`);
+      // Follows the (possibly squeezed) zoom-in; never later than 0.35 s (its fade-in) before re.
+      const rs = Math.max(start, Math.min(holdFirst ? start + zAt + 0.4 : start + seg, re - 0.35));
+      overlays.push(`<div id="ring-${s.id}" class="clip ring" data-start="${L(rs)}" data-duration="${r(re - rs)}" data-track-index="1" style="left:${r((g.x - g.w / 2 - pad) * K)}px;top:${r((g.y - g.h / 2 - pad) * K)}px;width:${r((g.w + pad * 2) * K)}px;height:${r((g.h + pad * 2) * K)}px"><span class="ring-inner"></span></div>`);
+      tweens.push(`tl.fromTo('#ring-${s.id} .ring-inner', { opacity: 0, scale: 1.25 }, { opacity: 1, scale: 1, duration: 0.35, ease: 'power2.out' }, ${L(rs)});`);
+      tweens.push(`tl.fromTo('#ring-${s.id} .ring-inner', { scale: 1 }, { scale: 1.08, duration: 0.45, immediateRender: false, ease: 'sine.inOut', yoyo: true, repeat: ${Math.max(1, Math.floor((re - rs - 0.35) / 0.45) - 1)} }, ${L(rs + 0.35)});`);
     }
   }
   if (s.mask) {
     // Cover on-screen text that must not ship (test ids, real names) with a
     // look-alike box. `after`: seconds into the step's source range when it appears.
+    // data-layout-ignore on the text only: it must match the app's own (small) size to
+    // pass as the real thing, so the type floor can't apply — but the box stays
+    // audited, so a misplaced mask is still reported.
     const m = s.mask;
     const from = (holdFirst ? start + hold : start) + (m.after ?? 0);
-    overlays.push(`<div id="mask-${s.id}" class="clip mask" data-start="${r(from)}" data-duration="${r(start + dur - from)}" data-track-index="1" style="left:${r(m.x * K)}px;top:${r(m.y * K)}px;width:${r(m.w * K)}px;height:${r(m.h * K)}px;font-size:${r((m.fontSize ?? 15) * K)}px;justify-content:${m.align === 'left' ? 'flex-start' : 'flex-end'};background:${m.bg ?? '#fff'};color:${m.color ?? '#141414'}"><span>${esc(m.text)}</span></div>`);
+    if (L(from) >= D) throw new Error(`step ${s.id}: mask.after ${m.after} is past the end of the step (${r(D)} s on screen) — lower it.`);
+    overlays.push(`<div id="mask-${s.id}" class="clip mask" data-start="${L(from)}" data-duration="${toEnd(from)}" data-track-index="1" style="left:${r(m.x * K)}px;top:${r(m.y * K)}px;width:${r(m.w * K)}px;height:${r(m.h * K)}px;font-size:${r((m.fontSize ?? 15) * K)}px;justify-content:${m.align === 'left' ? 'flex-start' : 'flex-end'};background:${m.bg ?? '#fff'};color:${m.color ?? '#141414'}"><span data-layout-ignore>${esc(m.text)}</span></div>`);
   }
   // Own track: the chime rings ~2.5 s, so on the last step it runs into the outro
   // whoosh — a deliberate layer, not the overlap the click track must avoid.
   if (s.chimeAfter !== undefined) sound(sfx('chime'), (holdFirst ? start + hold : start) + s.chimeAfter, 0.45, 7);
   T += dur;
-  return { ...s, holdFirst, ring, start, dur, n: i + 1, srcA: a, srcB: b, vStart, hStart, hold };
+  return { ...s, holdFirst, ring, start, dur, n: i + 1, srcA: a, srcB: b, vStart, hStart, hold, D, media, overlays, tweens, origin };
 });
 
 const outroStart = T;
@@ -226,13 +267,6 @@ const capSize = (text) => {
   while (fs > 24 && lines() * fs * 1.25 + 34 > CAP_BAND) fs -= 2;
   return fs;
 };
-const captions = steps.map((s) => `
-      <div id="cap-${s.id}" class="clip cap" data-start="${r(s.start)}" data-duration="${r(s.dur)}" data-track-index="2">
-        <div class="cap-inner"><span class="badge">${s.n}/${N}</span><span class="cap-text" style="font-size:${capSize(s.caption)}px">${esc(s.caption)}</span></div>
-      </div>`).join('');
-for (const s of steps) {
-  tweens.push(`tl.fromTo('#cap-${s.id} .cap-inner', { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: 'power3.out' }, ${r(s.start + 0.05)});`);
-}
 
 const brand = {
   bg: b.bg, bg2: b.bg2, glow: b.glow, accent: b.accent, onAccent: b.onAccent, ink: b.ink, capBg: b.captionBg,
@@ -242,27 +276,17 @@ const family = font.family ?? 'TVideo Sans';
 const faces = Object.entries(font.files ?? {})
   .map(([w, f]) => `@font-face { font-family: '${family}'; src: url('${f}'); font-weight: ${w}; }`).join('\n      ');
 const logo = cfg.logo && existsSync(cfg.logo) ? cfg.logo : null;
-const logoImg = (cls) => (logo ? `<img class="${cls}" src="${logo}" alt="${esc(cfg.logoAlt ?? '')}" />` : '');
+const logoImg = (cls, id) => (logo ? `<img${id ? ` id="${id}"` : ''} class="${cls}" src="${logo}" alt="${esc(cfg.logoAlt ?? '')}" />` : '');
+const vars = `:root { --bg: ${brand.bg}; --bg2: ${brand.bg2}; --glow: ${brand.glow}; --accent: ${brand.accent}; --on-accent: ${brand.onAccent}; --ink: ${brand.ink}; --cap-bg: ${brand.capBg}; }`;
 
-const html = `<!doctype html>
-<html lang="${esc(cfg.lang ?? 'en')}">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=1920, height=1080" />
-    <title>${esc(plan.title)}</title>
-    <script src="assets/vendor/gsap.min.js"></script>
-    <style>
-      ${faces}
-      :root { --bg: ${brand.bg}; --bg2: ${brand.bg2}; --glow: ${brand.glow}; --accent: ${brand.accent}; --on-accent: ${brand.onAccent}; --ink: ${brand.ink}; --cap-bg: ${brand.capBg}; }
-      body { margin: 0; background: var(--bg); font-family: '${family}', sans-serif; color: var(--ink); }
-      #root { position: relative; width: 100%; height: 100%; overflow: hidden; }
-      .bg { position: absolute; inset: 0; background: radial-gradient(1200px 700px at ${glowAt}, var(--glow) 0%, var(--bg2) 40%, var(--bg) 100%); }
-      .glow { position: absolute; width: ${g2.size}px; height: ${g2.size}px; left: ${g2.x - g2.size / 2}px; top: ${g2.y - g2.size / 2}px; border-radius: 50%;
-              background: radial-gradient(circle, ${g2.color} 0%, transparent 65%); }
+// Styles outside a scene's <template> are dropped, so every scene carries these.
+const sceneCss = `${faces}
+      ${vars}
+      .stage-wrap { position: absolute; inset: 0; }
       .stage { position: absolute; left: ${STAGE.x}px; top: ${STAGE.y}px; width: ${STAGE.w}px; height: ${STAGE.h}px;
                border-radius: 18px; overflow: hidden; background: #fff;
                box-shadow: 0 30px 80px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.08); }
-      #zoom { position: absolute; inset: 0; }
+      .zoom { position: absolute; inset: 0; }
       .shot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
       .mask { position: absolute; display: flex; align-items: center; font-weight: 600; padding: 0 2px; box-sizing: border-box; }
       .ring { position: absolute; }
@@ -278,61 +302,108 @@ const html = `<!doctype html>
       .card { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 120px; box-sizing: border-box; }
       .card .logo { width: 420px; padding: 26px 40px; background: #fff; border-radius: 24px; box-sizing: content-box; margin-bottom: 56px; }
       .card h1 { margin: 0; font-size: 92px; font-weight: 700; line-height: 1.2; }
-      .card .credit { position: absolute; bottom: 36px; font-size: 20px; color: color-mix(in srgb, var(--ink) 60%, transparent); }
+      .card .credit { position: absolute; bottom: 36px; font-size: 28px; color: color-mix(in srgb, var(--ink) 60%, transparent); }
       .card .sub { margin-top: 22px; font-size: 36px; font-weight: 400; color: color-mix(in srgb, var(--ink) 82%, transparent); }
       .card .rule { margin-top: 40px; width: 140px; height: 6px; border-radius: 3px; background: var(--accent); }
-      .card .check { width: 140px; height: 140px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; margin-bottom: 40px; }
+      .card .check { width: 140px; height: 140px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; margin-bottom: 40px; }`;
+
+// Host id = scene root id = timeline key, or the render waits on a scene that never registers.
+// The root is styled by its id only: a class on it can't match once the scene's CSS is scoped.
+const sceneFile = ({ id, card, body, tl }) => `<template>
+  <style>
+      ${sceneCss}
+      #${id} { position: absolute; inset: 0; font-family: '${family}', sans-serif; color: var(--ink); }
+  </style>
+  <div id="${id}" data-composition-id="${id}" data-width="1920" data-height="1080">
+${card ? `    <div class="card">\n${body}\n    </div>` : body}
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    ${tl.filter(Boolean).join('\n    ')}
+    window.__timelines['${id}'] = tl;
+  </script>
+</template>
+`;
+
+const scenes = [{
+  id: 'intro', card: true, start: 0, dur: introDur,
+  // Title and subtitle are on screen from frame 0: it is the thumbnail on social players.
+  body: `    ${logoImg('logo', 'intro-logo')}
+    <h1 id="intro-title">${esc(plan.title)}</h1>
+    <div id="intro-sub" class="sub">${esc(plan.subtitle ?? '')}</div>
+    <div id="intro-rule" class="rule"></div>`,
+  tl: [
+    logo && "tl.fromTo('#intro-logo', { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 0.2);",
+    "tl.fromTo('#intro-rule', { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: 'power2.out' }, 0.9);",
+  ],
+}];
+steps.forEach((s, i) => scenes.push({
+  id: `step-${s.id}`, start: s.start, dur: s.dur,
+  body: `    <div id="stage-wrap-${s.id}" class="stage-wrap">
+      ${logoImg('corner-logo')}
+      <div id="stage-${s.id}" class="stage">
+        <div id="zoom-${s.id}" class="zoom" data-layout-allow-overflow${s.origin}>
+          ${[...s.media, ...s.overlays].join('\n          ')}
+        </div>
+      </div>
+    </div>
+    <div id="cap-${s.id}" class="clip cap caption" data-start="0" data-duration="${s.D}" data-track-index="2">
+      <span class="cap-inner"><span class="badge">${s.n}/${N}</span><span class="cap-text" style="font-size:${capSize(s.caption)}px">${esc(s.caption)}</span></span>
+    </div>`,
+  tl: [
+    i === 0 && `tl.fromTo('#stage-${s.id}', { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 0);`,
+    ...s.tweens,
+    `tl.fromTo('#cap-${s.id} .cap-inner', { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: 'power3.out' }, 0.05);`,
+    // The last step's footage fades out under the outro's whoosh.
+    i === N - 1 && `tl.fromTo('#stage-wrap-${s.id}', { opacity: 1 }, { opacity: 0, duration: 0.4, ease: 'power2.in' }, ${r(s.D - 0.4)});`,
+  ],
+}));
+scenes.push({
+  id: 'outro', card: true, start: outroStart, dur: outroDur,
+  body: `    <div id="outro-check" class="check"><svg viewBox="0 0 24 24" width="78" height="78" fill="none" stroke="currentColor" style="color:var(--on-accent)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+    <h1 id="outro-title">${esc(plan.outro?.title ?? '')}</h1>
+    <div id="outro-line" class="sub">${esc(plan.outro?.line ?? '')}</div>
+    ${music?.credit ? `<div class="credit">${esc(music.credit)}</div>` : ''}
+    <div id="outro-rule" class="rule"></div>`,
+  tl: [
+    "tl.fromTo('#outro-check', { scale: 0.4, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: 'back.out(1.8)' }, 0.15);",
+    "tl.fromTo('#outro-title', { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 0.35);",
+    "tl.fromTo('#outro-line', { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: 'power2.out' }, 0.6);",
+    "tl.fromTo('#outro-rule', { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: 'power2.out' }, 0.8);",
+  ],
+});
+// A re-record can drop steps: clear our old scene files (only ours) before writing.
+mkdirSync('compositions', { recursive: true });
+for (const f of readdirSync('compositions')) if (/^(intro|outro|step-.+)\.html$/.test(f)) rmSync(`compositions/${f}`);
+for (const sc of scenes) writeFileSync(`compositions/${sc.id}.html`, sceneFile(sc));
+
+const html = `<!doctype html>
+<html lang="${esc(cfg.lang ?? 'en')}">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>${esc(plan.title)}</title>
+    <script src="assets/vendor/gsap.min.js"></script>
+    <style>
+      ${faces}
+      ${vars}
+      body { margin: 0; background: var(--bg); font-family: '${family}', sans-serif; color: var(--ink); }
+      #root { position: relative; width: 100%; height: 100%; overflow: hidden; }
+      .bg { position: absolute; inset: 0; background: radial-gradient(1200px 700px at ${glowAt}, var(--glow) 0%, var(--bg2) 40%, var(--bg) 100%); }
+      .glow { position: absolute; width: ${g2.size}px; height: ${g2.size}px; left: ${g2.x - g2.size / 2}px; top: ${g2.y - g2.size / 2}px; border-radius: 50%;
+              background: radial-gradient(circle, ${g2.color} 0%, transparent 65%); }
     </style>
   </head>
   <body>
     <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="${r(total)}">
       <div class="bg"></div>
       <div id="glow" class="glow"></div>
-
-      <section id="intro" class="clip card" data-start="0" data-duration="${r(introDur)}" data-track-index="4">
-        ${logoImg('logo')}
-        <h1 id="intro-title">${esc(plan.title)}</h1>
-        <div id="intro-sub" class="sub">${esc(plan.subtitle ?? '')}</div>
-        <div id="intro-rule" class="rule"></div>
-      </section>
-
-      <div id="stage-wrap" style="position:absolute;inset:0;opacity:0">
-        ${logoImg('corner-logo')}
-        <div id="stage" class="stage">
-          <div id="zoom">
-            ${media.join('\n            ')}
-            ${overlays.join('\n            ')}
-          </div>
-        </div>
-      </div>
-${captions}
-
-      <section id="outro" class="clip card" data-start="${r(outroStart)}" data-duration="${r(outroDur)}" data-track-index="4">
-        <div id="outro-check" class="check"><svg viewBox="0 0 24 24" width="78" height="78" fill="none" stroke="currentColor" style="color:var(--on-accent)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
-        <h1 id="outro-title">${esc(plan.outro?.title ?? '')}</h1>
-        <div id="outro-line" class="sub">${esc(plan.outro?.line ?? '')}</div>
-        ${music?.credit ? `<div class="credit">${esc(music.credit)}</div>` : ''}
-        <div id="outro-rule" class="rule"></div>
-      </section>
+      ${scenes.map((sc) => `<div id="${sc.id}" data-composition-id="${sc.id}" data-composition-src="compositions/${sc.id}.html" data-start="${r(sc.start)}" data-duration="${r(r(sc.start + sc.dur) - r(sc.start))}" data-track-index="1" data-width="1920" data-height="1080"></div>`).join('\n      ')}
       ${audios.join('\n      ')}
     </div>
     <script>
       const tl = gsap.timeline({ paused: true });
       tl.fromTo('#glow', { scale: 1 }, { scale: 1.15, duration: ${r(total / 2)}, ease: 'sine.inOut', yoyo: true, repeat: 1 }, 0);
-      ${logo ? "tl.fromTo('#intro .logo', { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 0.2);" : ''}
-      tl.fromTo('#intro-title', { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 0.45);
-      tl.fromTo('#intro-sub', { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: 'power2.out' }, 0.7);
-      tl.fromTo('#intro-rule', { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: 'power2.out' }, 0.9);
-      // stage-wrap is untimed (its videos carry the timing; a timed wrapper around
-      // timed <video> breaks frame extraction), so its visibility is opacity-driven.
-      tl.set('#stage-wrap', { opacity: 1 }, ${r(introDur)});
-      tl.fromTo('#stage', { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, ${r(introDur)});
-      tl.to('#stage-wrap', { opacity: 0, duration: 0.4, ease: 'power2.in' }, ${r(outroStart - 0.4)});
-      ${tweens.join('\n      ')}
-      tl.fromTo('#outro-check', { scale: 0.4, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: 'back.out(1.8)' }, ${r(outroStart + 0.15)});
-      tl.fromTo('#outro-title', { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, ${r(outroStart + 0.35)});
-      tl.fromTo('#outro-line', { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: 'power2.out' }, ${r(outroStart + 0.6)});
-      tl.fromTo('#outro-rule', { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: 'power2.out' }, ${r(outroStart + 0.8)});
       window.__timelines['main'] = tl;
     </script>
   </body>
