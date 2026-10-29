@@ -8,6 +8,8 @@
   clip (rendered next to the captions-only one). Any other argument keeps the full flow (#14).
 - `theme` presets (`navy`, `purple`, `teal`, `blue`) fill `brand`; `brand.glowAt` / `brand.glow2` place the two
   background glows in canvas pixels to match a reference frame (#12).
+- `voice.mjs --only <id>` / `--sample "<text>"` generate one line to listen to before generating them all;
+  neither touches `voices.json`, and an `--only` line is reused by the full run (#11).
 
 ## 1.2.0 — 2026-10-16
 

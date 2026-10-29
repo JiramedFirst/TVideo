@@ -3,6 +3,8 @@
 //   node <skill>/scripts/voice.mjs --voice <heygenVoiceId> --lang th
 //   node <skill>/scripts/voice.mjs --engine google --voice th-TH-Chirp3-HD-Achernar
 //   node <skill>/scripts/voice.mjs --engine google --list --lang th-TH
+//   node <skill>/scripts/voice.mjs --voice <id> --only intro       # preview one plan line
+//   node <skill>/scripts/voice.mjs --voice <id> --sample "<text>"  # preview any text
 //
 // Reads `narration` on plan.json's intro, steps[] and outro, generates one file
 // per line with HeyGen TTS (via the Hyperframes media-use skill) or Google Cloud
@@ -75,13 +77,28 @@ if (ENGINE === 'google') {
   };
 }
 
+const duration = (path) => Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path], { encoding: 'utf8' }).trim());
+const ONLY = arg('only');
+const SAMPLE = arg('sample');
+if (ONLY && SAMPLE) throw new Error('use --only <id> or --sample "<text>", not both.');
+mkdirSync('assets/voice', { recursive: true });
+
+// Previews never write voices.json: a partial one would leave the other steps unvoiced in the build.
+if (SAMPLE) {
+  const path = 'assets/voice/_sample.mp3';
+  await synth(SAMPLE, path);
+  console.log(`${path} ${duration(path).toFixed(1)}s — listen before generating every line`);
+  process.exit(0);
+}
+
 const plan = JSON.parse(readFileSync('plan.json', 'utf8'));
-const lines = [
+const all = [
   plan.intro && { id: 'intro', text: plan.intro.narration },
   ...plan.steps.map((s) => ({ id: s.id, text: s.narration })),
   plan.outro && { id: 'outro', text: plan.outro.narration },
 ].filter((l) => l && l.text);
-mkdirSync('assets/voice', { recursive: true });
+const lines = ONLY ? all.filter((l) => l.id === ONLY) : all;
+if (ONLY && !lines.length) throw new Error(`no narration line "${ONLY}" in plan.json — narrated ids: ${all.map((l) => l.id).join(', ')}.`);
 
 const out = {};
 for (const { id, text } of lines) {
@@ -95,8 +112,12 @@ for (const { id, text } of lines) {
     await synth(text, path);
     writeFileSync(hashFile, hash);
   }
-  const duration = Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path], { encoding: 'utf8' }).trim());
-  out[id] = { path, duration };
+  out[id] = { path, duration: duration(path) };
+}
+if (ONLY) {
+  // Same hash cache as a full run, so approving this line costs nothing later.
+  console.log(`${out[ONLY].path} ${out[ONLY].duration.toFixed(1)}s — voices.json not changed; run without --only when the voice is approved`);
+  process.exit(0);
 }
 writeFileSync('voices.json', JSON.stringify(out, null, 2));
 console.log(Object.entries(out).map(([k, v]) => `${k}:${v.duration.toFixed(1)}s`).join(' '));

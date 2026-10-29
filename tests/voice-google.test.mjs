@@ -5,7 +5,7 @@
 //
 //   node tests/voice-google.test.mjs
 import { execFile, execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -49,13 +49,28 @@ try {
   check(listed.includes('th-TH-Chirp3-HD-Test'), '--list prints the voice name');
   check(calls[0].url === '/voices?languageCode=th-TH', '--list filters by language');
 
+  // Preview: one plan line, cached, voices.json untouched (a partial one would strip the other steps' voices).
+  calls.length = 0;
+  const one = await run(['--engine', 'google', '--voice', 'th-TH-Chirp3-HD-Test', '--only', 's01']);
+  check(calls.length === 1 && calls[0].body.input.text === 'กด Save', '--only s01 synthesizes just that line');
+  check(one.includes('assets/voice/s01.mp3') && !existsSync(join(work, 'voices.json')), '--only prints the file and leaves voices.json alone');
+  const bad = await run(['--engine', 'google', '--voice', 'th-TH-Chirp3-HD-Test', '--only', 's02']).then(() => '', String);
+  check(bad.includes('no narration line "s02"') && bad.includes('intro, s01, outro'), '--only with an unknown or unnarrated id lists the ids');
+
+  calls.length = 0;
+  const sample = await run(['--engine', 'google', '--voice', 'th-TH-Chirp3-HD-Test', '--sample', 'เปิด Dashboard']);
+  check(calls.length === 1 && calls[0].body.input.text === 'เปิด Dashboard' && sample.includes('assets/voice/_sample.mp3'), '--sample synthesizes the given text and prints the file');
+  check(!existsSync(join(work, 'voices.json')), '--sample leaves voices.json alone');
+  const both = await run(['--engine', 'google', '--voice', 'th-TH-A', '--only', 's01', '--sample', 'x']).then(() => '', String);
+  check(both.includes('not both'), '--only with --sample is refused');
+
   calls.length = 0;
   await run(['--engine', 'google', '--voice', 'th-TH-Chirp3-HD-Test']);
   const voices = JSON.parse(readFileSync(join(work, 'voices.json'), 'utf8'));
   check(Object.keys(voices).join() === 'intro,s01,outro', 'one entry per narrated line, unnarrated step skipped');
   check(Math.abs(voices.s01.duration - 1.5) < 0.1, `duration read from the mp3 (${voices.s01.duration})`);
-  check(calls.length === 3 && calls.every((c) => c.key === 'k123'), 'three synth calls, API key in header');
-  const b = calls.find((c) => c.body.input.text === 'กด Save')?.body;
+  check(calls.length === 2 && calls.every((c) => c.key === 'k123'), 'full run after a preview bills only the other two lines, API key in header');
+  const b = calls.find((c) => c.body.input.text === 'สวัสดีครับ')?.body;
   check(b?.voice.languageCode === 'th-TH' && b.voice.name === 'th-TH-Chirp3-HD-Test', 'language derived from voice name');
 
   calls.length = 0;
