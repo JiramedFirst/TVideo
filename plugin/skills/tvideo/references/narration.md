@@ -14,9 +14,14 @@ voice → "ครับ").
 Latin script ("Dashboard", "PO", "PDF"). Brand names with a local
 pronunciation are the exception — write them as locals say them (e.g. a Thai
 brand read in Thai script). Generate one test line and listen before generating
-all of them — add `--only <id>` (e.g. `--only intro`) or `--sample "<text>"` to the
-`voice.mjs` commands below. Each writes one MP3 and prints its path; neither touches
-`voices.json`, and an `--only` line is cached, so the full run doesn't bill it again.
+all of them — add `--sample "<text>"` or `--only <id>` (e.g. `--only intro`) to the
+`voice.mjs` command below, keeping its `--engine`/`--voice`/`--lang`. Each writes one
+MP3 and prints its path.
+- `--sample` writes `assets/voice/_sample-<voice>.mp3`: use it to compare voices and
+  to test a term before it is in plan.json.
+- `--only` makes the real line of the chosen voice and caches it, so the full run
+  doesn't bill it again. It replaces that line's MP3 (and its `voices.json` entry, if
+  one exists), so don't use it to try a second voice on a voiced clip.
 Have the user play the file: speech recognition can't judge pronunciation in every
 language (the default Whisper `small.en` is no help for Thai).
 

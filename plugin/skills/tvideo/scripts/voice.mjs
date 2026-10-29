@@ -3,8 +3,9 @@
 //   node <skill>/scripts/voice.mjs --voice <heygenVoiceId> --lang th
 //   node <skill>/scripts/voice.mjs --engine google --voice th-TH-Chirp3-HD-Achernar
 //   node <skill>/scripts/voice.mjs --engine google --list --lang th-TH
-//   node <skill>/scripts/voice.mjs --voice <id> --only intro       # preview one plan line
-//   node <skill>/scripts/voice.mjs --voice <id> --sample "<text>"  # preview any text
+//   node <skill>/scripts/voice.mjs --voice <id> --lang th --only intro       # preview one plan line
+//   node <skill>/scripts/voice.mjs --voice <id> --lang th --sample "<text>"  # preview any text
+// (a preview takes the same --engine/--voice/--lang as the full run, or the full run re-bills it)
 //
 // Reads `narration` on plan.json's intro, steps[] and outro, generates one file
 // per line with HeyGen TTS (via the Hyperframes media-use skill) or Google Cloud
@@ -78,23 +79,31 @@ if (ENGINE === 'google') {
 }
 
 const duration = (path) => Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path], { encoding: 'utf8' }).trim());
-const ONLY = arg('only');
-const SAMPLE = arg('sample');
+// A preview flag with no value must not fall through to a full, fully billed run.
+const preview = (name) => {
+  if (!process.argv.includes(`--${name}`)) return undefined;
+  const v = arg(name);
+  if (!v || v.startsWith('--')) throw new Error(`--${name} needs a value.`);
+  return v;
+};
+const ONLY = preview('only');
+const SAMPLE = preview('sample');
 if (ONLY && SAMPLE) throw new Error('use --only <id> or --sample "<text>", not both.');
-mkdirSync('assets/voice', { recursive: true });
 
-// Previews never write voices.json: a partial one would leave the other steps unvoiced in the build.
 if (SAMPLE) {
-  const path = 'assets/voice/_sample.mp3';
+  // One file per voice, so 2–3 candidate voices can be compared side by side.
+  mkdirSync('assets/voice', { recursive: true });
+  const path = `assets/voice/_sample-${VOICE.replace(/[^\w.-]/g, '_')}.mp3`;
   await synth(SAMPLE, path);
   console.log(`${path} ${duration(path).toFixed(1)}s — listen before generating every line`);
   process.exit(0);
 }
 
 const plan = JSON.parse(readFileSync('plan.json', 'utf8'));
+mkdirSync('assets/voice', { recursive: true });
 const all = [
   plan.intro && { id: 'intro', text: plan.intro.narration },
-  ...plan.steps.map((s) => ({ id: s.id, text: s.narration })),
+  ...plan.steps.map((s) => ({ id: String(s.id), text: s.narration })),
   plan.outro && { id: 'outro', text: plan.outro.narration },
 ].filter((l) => l && l.text);
 const lines = ONLY ? all.filter((l) => l.id === ONLY) : all;
@@ -116,7 +125,11 @@ for (const { id, text } of lines) {
 }
 if (ONLY) {
   // Same hash cache as a full run, so approving this line costs nothing later.
-  console.log(`${out[ONLY].path} ${out[ONLY].duration.toFixed(1)}s — voices.json not changed; run without --only when the voice is approved`);
+  // An existing voices.json gets this one entry refreshed (the mp3 it points at just changed);
+  // none is created, since a partial one would leave the other steps unvoiced in the build.
+  const kept = existsSync('voices.json');
+  if (kept) writeFileSync('voices.json', JSON.stringify({ ...JSON.parse(readFileSync('voices.json', 'utf8')), ...out }, null, 2));
+  console.log(`${out[ONLY].path} ${out[ONLY].duration.toFixed(1)}s — ${kept ? `voices.json entry "${ONLY}" updated` : 'no voices.json written; run without --only when the voice is approved'}`);
   process.exit(0);
 }
 writeFileSync('voices.json', JSON.stringify(out, null, 2));

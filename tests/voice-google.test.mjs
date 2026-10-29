@@ -59,10 +59,14 @@ try {
 
   calls.length = 0;
   const sample = await run(['--engine', 'google', '--voice', 'th-TH-Chirp3-HD-Test', '--sample', 'เปิด Dashboard']);
-  check(calls.length === 1 && calls[0].body.input.text === 'เปิด Dashboard' && sample.includes('assets/voice/_sample.mp3'), '--sample synthesizes the given text and prints the file');
+  check(calls.length === 1 && calls[0].body.input.text === 'เปิด Dashboard' && sample.includes('assets/voice/_sample-th-TH-Chirp3-HD-Test.mp3'), '--sample synthesizes the given text and prints a per-voice file');
   check(!existsSync(join(work, 'voices.json')), '--sample leaves voices.json alone');
   const both = await run(['--engine', 'google', '--voice', 'th-TH-A', '--only', 's01', '--sample', 'x']).then(() => '', String);
   check(both.includes('not both'), '--only with --sample is refused');
+  calls.length = 0;
+  const noValue = await run(['--engine', 'google', '--voice', 'th-TH-A', '--only']).then(() => '', String);
+  const empty = await run(['--engine', 'google', '--voice', 'th-TH-A', '--sample', '']).then(() => '', String);
+  check(noValue.includes('--only needs a value') && empty.includes('--sample needs a value') && calls.length === 0, 'a preview flag without a value is refused, nothing billed');
 
   calls.length = 0;
   await run(['--engine', 'google', '--voice', 'th-TH-Chirp3-HD-Test']);
@@ -76,6 +80,17 @@ try {
   calls.length = 0;
   await run(['--engine', 'google', '--voice', 'th-TH-Chirp3-HD-Test']);
   check(calls.length === 0, 'second run with unchanged lines calls the API zero times');
+
+  // --only on a voiced clip: that entry must follow its new mp3, the rest stay.
+  const vPath = join(work, 'voices.json');
+  writeFileSync(vPath, JSON.stringify({ ...voices, s01: { ...voices.s01, duration: 9 } }));
+  const plan = JSON.parse(readFileSync(join(work, 'plan.json'), 'utf8'));
+  plan.steps[0].narration = 'กด Save อีกครั้ง';
+  writeFileSync(join(work, 'plan.json'), JSON.stringify(plan));
+  calls.length = 0;
+  await run(['--engine', 'google', '--voice', 'th-TH-Chirp3-HD-Test', '--only', 's01']);
+  const after = JSON.parse(readFileSync(vPath, 'utf8'));
+  check(calls.length === 1 && Math.abs(after.s01.duration - 1.5) < 0.1 && Object.keys(after).join() === 'intro,s01,outro', '--only refreshes its own voices.json entry and keeps the others');
 
   const noKey = await run(['--engine', 'google', '--voice', 'th-TH-A'], { ...env, GOOGLE_TTS_API_KEY: '' }).then(() => '', String);
   check(noKey.includes('GOOGLE_TTS_API_KEY is not set'), 'missing key fails with a clear message');
