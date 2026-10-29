@@ -30,27 +30,34 @@ rebuild.
 
 ## Starting at one stage
 
-A mode applies only when the argument's first word is exactly `setup`, `record` or
-`dub`; the rest is the request (e.g. `/tvideo record the "create order" flow on staging`).
+A mode applies only when the argument's first word is `setup`, `record` or `dub`
+(any case, trailing punctuation ignored); the rest is the request (e.g.
+`/tvideo record the "create order" flow on staging`). What the request asks for
+explicitly wins over a mode's default ("record … with Thai narration" gets narration).
 Any other argument is the request itself — run the full flow. Name the mode you picked
 in your first line, so a misread is caught before any work.
 
 | Argument | Do | Stop after |
 |---|---|---|
 | *(none / anything else)* | Phases 0–6 | final render |
-| `setup` | Phase 0 only: report each check as found/missing and fix the gaps | the tools are ready (Chromium comes later with the recorder's `npm i`) |
+| `setup` | Phase 0 only: report each check as found/missing and fix the gaps, except Chromium — don't install it outside the recorder; its `npm i` brings the matching build | the tools are ready |
 | `record` | Phases 0–6, but don't offer narration in the brief (music stays as configured) | final render without narration |
 | `dub` | Narration on a clip already made — see below | the narrated render |
 
 `dub`:
 1. Phase 0, then find the clip project (the folder with `plan.json` and
-   `timeline.json`). None → say so and suggest `/tvideo record`. Several → ask which.
-2. `node build.mjs` once *before* writing narration: a plan/timeline mismatch must
-   fail here, not after TTS credits are spent.
-3. `references/narration.md`, plus `npm i -D @hyperframes/core` in the clip project
-   so the music dips under the voice (`references/editing.md`, Music).
-4. Phase 5 steps 3–4, then Phase 6 steps 1–3, rendering to
-   `renders/<clip-name>-narrated.mp4` so the delivered captions-only render is kept.
+   `timeline.json`). None → say so and suggest `/tvideo record`. Several → ask
+   which, or all (then run steps 2–5 per clip).
+2. Copy `captions.srt` / `captions.vtt` to `captions-no-voice.srt` / `.vtt`: every
+   rebuild rewrites them with the narrated timings, and the captions-only render
+   needs its own.
+3. `node build.mjs` once *before* writing narration: a plan/timeline mismatch must
+   fail here, not after TTS credits are spent. Then `npm i -D @hyperframes/core` in
+   the clip project, so the music dips under the voice (`references/editing.md`, Music).
+4. `references/narration.md`. Re-check the lines against the Phase 1 safety rules:
+   the voice must not say a value that is masked on screen.
+5. Phase 5 steps 3–4, then Phase 6 steps 1–3 — in step 3 use
+   `-o renders/<clip-name>-narrated.mp4`, never the existing `<clip-name>.mp4`.
    Skip Phase 6 step 4: this session recorded nothing, so there is nothing to clean up.
 
 ## Phase 0 — Preflight
