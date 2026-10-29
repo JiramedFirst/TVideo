@@ -184,7 +184,8 @@ node <skill>/scripts/new-clip.mjs clip-02 recorder/recordings/<ts>/<that-folder>
 ```
 
 In `tvideo.config.json`: set `lang` and `readingCharsPerSec` (≈15 English, ≈12
-Thai — slower scripts read slower), the brand colours, and `logo` (a path, or
+Thai — slower scripts read slower), the `theme` or brand colours (a brand colour
+overrides the theme's), and `logo` (a path, or
 `null` for text-only cards). Keep `music.credit` — the bundled track is CC BY.
 
 `plan.json` steps map **1:1, in order** to the recorder's `tl.step`s (the build

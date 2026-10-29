@@ -24,6 +24,34 @@ if (!timeline) throw new Error('timeline.json missing — import the recording f
 if (timeline.length !== plan.steps.length) {
   throw new Error(`plan.json has ${plan.steps.length} steps but timeline.json has ${timeline.length} — they must match 1:1, in order.`);
 }
+
+// All dark, so the light ink and caption band stay readable on every theme.
+const THEMES = {
+  navy: { bg: '#0f172a', bg2: '#1e293b', glow: '#334155', accent: '#22c55e', onAccent: '#052e16', ink: '#f8fafc', captionBg: 'rgba(2,6,23,0.82)' },
+  purple: { bg: '#1e1033', bg2: '#2e1065', glow: '#4c1d95', accent: '#a78bfa', onAccent: '#1e1033', ink: '#faf5ff', captionBg: 'rgba(30,16,51,0.85)' },
+  teal: { bg: '#042f2e', bg2: '#134e4a', glow: '#115e59', accent: '#2dd4bf', onAccent: '#042f2e', ink: '#f0fdfa', captionBg: 'rgba(4,47,46,0.85)' },
+  blue: { bg: '#0b1730', bg2: '#172554', glow: '#1e40af', accent: '#60a5fa', onAccent: '#0b1730', ink: '#eff6ff', captionBg: 'rgba(11,23,48,0.85)' },
+};
+const themeName = cfg.theme ?? 'navy';
+if (!Object.hasOwn(THEMES, themeName)) throw new Error(`unknown theme "${themeName}" — use one of: ${Object.keys(THEMES).join(', ')} (or set brand colours yourself).`);
+// null means "use the default", as it did before themes existed.
+const own = Object.fromEntries(Object.entries(cfg.brand ?? {}).filter(([, v]) => v != null));
+const overridden = Object.keys(THEMES.navy).filter((k) => k in own);
+// Configs from before themes carry every colour, which would hide the theme without a word.
+if (cfg.theme && overridden.length) console.warn(`! theme "${cfg.theme}": brand.${overridden.join(', brand.')} override it — delete those keys to see the theme.`);
+const b = { ...THEMES[themeName], ...own };
+// Glow positions are canvas pixels (1920x1080), so they can be read straight off a reference frame.
+const num = (v) => typeof v === 'number' && Number.isFinite(v);
+if (b.glowAt && !(Array.isArray(b.glowAt) && b.glowAt.length === 2 && b.glowAt.every(num))) {
+  throw new Error(`brand.glowAt must be [x, y] in canvas pixels, e.g. [1500, 200] — got ${JSON.stringify(b.glowAt)}.`);
+}
+const g2own = Object.fromEntries(Object.entries(b.glow2 ?? {}).filter(([, v]) => v != null));
+for (const k of ['x', 'y', 'size']) {
+  if (k in g2own && !num(g2own[k])) throw new Error(`brand.glow2.${k} must be a number of canvas pixels — got ${JSON.stringify(g2own[k])}.`);
+}
+const glowAt = b.glowAt ? `${b.glowAt[0]}px ${b.glowAt[1]}px` : '78% 18%';
+const g2 = { x: 190, y: 870, size: 900, color: 'color-mix(in srgb, var(--accent) 16%, transparent)', ...g2own };
+
 const voices = readJson('voices.json', {});
 // clicks.json: v1 recorders wrote bare ms numbers; v1.1 writes {ms, box, gone}.
 const clicks = readJson('clicks.json', []).map((c) => (typeof c === 'number' ? { t: c / 1000 } : { ...c, t: c.ms / 1000 }));
@@ -201,22 +229,9 @@ for (const s of steps) {
   tweens.push(`tl.fromTo('#cap-${s.id} .cap-inner', { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: 'power3.out' }, ${r(s.start + 0.05)});`);
 }
 
-// All dark, so the light ink and caption band stay readable on every theme.
-const THEMES = {
-  navy: { bg: '#0f172a', bg2: '#1e293b', glow: '#334155', accent: '#22c55e', onAccent: '#052e16', ink: '#f8fafc', captionBg: 'rgba(2,6,23,0.82)' },
-  purple: { bg: '#1e1033', bg2: '#2e1065', glow: '#4c1d95', accent: '#a78bfa', onAccent: '#1e1033', ink: '#faf5ff', captionBg: 'rgba(30,16,51,0.85)' },
-  teal: { bg: '#042f2e', bg2: '#134e4a', glow: '#115e59', accent: '#2dd4bf', onAccent: '#042f2e', ink: '#f0fdfa', captionBg: 'rgba(4,47,46,0.85)' },
-  blue: { bg: '#0b1730', bg2: '#172554', glow: '#1e40af', accent: '#60a5fa', onAccent: '#0b1730', ink: '#eff6ff', captionBg: 'rgba(11,23,48,0.85)' },
-};
-const theme = THEMES[cfg.theme ?? 'navy'];
-if (!theme) throw new Error(`unknown theme "${cfg.theme}" — use one of: ${Object.keys(THEMES).join(', ')} (or set brand colours yourself).`);
-const b = { ...theme, ...cfg.brand };
 const brand = {
   bg: b.bg, bg2: b.bg2, glow: b.glow, accent: b.accent, onAccent: b.onAccent, ink: b.ink, capBg: b.captionBg,
 };
-// Glow positions are canvas pixels (1920x1080), so they can be read straight off a reference frame.
-const glowAt = b.glowAt ? `${b.glowAt[0]}px ${b.glowAt[1]}px` : '78% 18%';
-const g2 = { x: 190, y: 870, size: 900, color: 'color-mix(in srgb, var(--accent) 16%, transparent)', ...b.glow2 };
 const font = cfg.font ?? {};
 const family = font.family ?? 'TVideo Sans';
 const faces = Object.entries(font.files ?? {})

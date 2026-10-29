@@ -4,7 +4,7 @@
 // voice pacing, caption shrink, subtitles — and the inputs it must refuse.
 //
 //   node tests/build.test.mjs
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -54,12 +54,9 @@ function project({ plan = PLAN, timeline = TIMELINE, clicks = CLICKS, voices, co
     dir,
     put,
     build() {
-      try {
-        execFileSync('node', ['build.mjs'], { cwd: dir, stdio: 'pipe' });
-        return { html: readFileSync(join(dir, 'index.html'), 'utf8') };
-      } catch (e) {
-        return { error: e.stderr.toString() };
-      }
+      const r = spawnSync('node', ['build.mjs'], { cwd: dir, encoding: 'utf8' });
+      if (r.status !== 0) return { error: r.stderr };
+      return { html: readFileSync(join(dir, 'index.html'), 'utf8'), warnings: r.stderr };
     },
   };
 }
@@ -109,14 +106,21 @@ check(/only 0 tap/.test(project({ clicks: [] }).build().error ?? ''), 'ring: tru
 
 {
   // Themes fill brand; brand keys win; glows move only when asked.
-  const plain = project().build().html;
-  check(plain.includes('--bg: #0f172a;') && plain.includes('at 78% 18%') && plain.includes('left: -260px; top: 420px;'), 'no theme/glow keys: default look unchanged');
-  const purple = project({ config: { theme: 'purple', brand: { accent: '#ff0000' } } }).build().html;
-  check(project({ config: { theme: 'teal' } }).build().html.includes('--bg: #042f2e;'), 'theme alone works on the example config');
-  check(purple.includes('--bg: #1e1033;') && purple.includes('--accent: #ff0000;'), 'theme fills brand, brand keys override it');
-  const moved = project({ config: { brand: { glowAt: [1500, 200], glow2: { x: 1700, y: 900, size: 600, color: '#a78bfa55' } } } }).build().html;
-  check(moved.includes('at 1500px 200px') && moved.includes('left: 1400px; top: 600px;') && moved.includes('width: 600px') && moved.includes('#a78bfa55 0%'), 'glowAt / glow2 place both glows');
+  const html = (config) => project({ config }).build().html ?? '';
+  const pre = { bg: '#0f172a', bg2: '#1e293b', glow: '#334155', accent: '#22c55e', onAccent: '#052e16', ink: '#f8fafc', captionBg: 'rgba(2,6,23,0.82)' };
+  const plain = html({ theme: undefined, brand: pre });
+  check(plain.includes('--bg: #0f172a;') && plain.includes('at 78% 18%') && plain.includes('.glow { position: absolute; width: 900px; height: 900px; left: -260px; top: 420px;'), 'pre-theme config (no theme key, full brand): default look unchanged');
+  const old = project({ config: { theme: 'purple', brand: pre } }).build();
+  check(old.html?.includes('--bg: #0f172a;') && /brand\.bg, .*override it/.test(old.warnings), 'theme hidden by old brand colours warns');
+  check(html({ theme: 'teal' }).includes('--bg: #042f2e;'), 'theme alone works on the example config');
+  const purple = html({ theme: 'purple', brand: { accent: '#ff0000', ink: null } });
+  check(purple.includes('--bg: #1e1033;') && purple.includes('--accent: #ff0000;') && purple.includes('--ink: #faf5ff;'), 'theme fills brand, brand keys override it, null keeps the theme value');
+  const moved = html({ brand: { glowAt: [1500, 200], glow2: { x: 1700, y: 900, size: 600, color: '#a78bfa55' } } });
+  check(moved.includes('at 1500px 200px') && moved.includes('.glow { position: absolute; width: 600px; height: 600px; left: 1400px; top: 600px;') && moved.includes('#a78bfa55 0%'), 'glowAt / glow2 place both glows');
   check(/unknown theme "pink".*navy, purple, teal, blue/.test(project({ config: { theme: 'pink' } }).build().error ?? ''), 'an unknown theme is refused with the list');
+  check(/unknown theme "constructor"/.test(project({ config: { theme: 'constructor' } }).build().error ?? ''), 'an inherited name is not a theme');
+  check(/glowAt must be \[x, y\]/.test(project({ config: { brand: { glowAt: '78% 18%' } } }).build().error ?? ''), 'a malformed glowAt is refused');
+  check(/glow2\.x must be a number/.test(project({ config: { brand: { glow2: { x: '1700px' } } } }).build().error ?? ''), 'a non-numeric glow2 field is refused');
 }
 
 if (failed) {
