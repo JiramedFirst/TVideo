@@ -5,7 +5,7 @@
 //
 //   node tests/voice-google.test.mjs
 import { execFile, execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -33,10 +33,17 @@ const server = createServer((req, res) => {
   });
 });
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
-const env = { ...process.env, GOOGLE_TTS_API_KEY: 'k123', TV_GOOGLE_TTS_URL: `http://127.0.0.1:${server.address().port}` };
+// HOME is a temp dir, so the developer's own ~/.config/tvideo key file is never read.
+const home = mkdtempSync(join(tmpdir(), 'tvideo-gvoice-home-'));
+const { GOOGLE_TTS_API_KEY: _k, TV_ENV_FILE: _f, ...clean } = process.env;
+const noKeyEnv = { ...clean, HOME: home, TV_GOOGLE_TTS_URL: `http://127.0.0.1:${server.address().port}` };
+const env = { ...noKeyEnv, GOOGLE_TTS_API_KEY: 'k123' };
 // Async exec: the fake server runs in this process, so a sync spawn would block it.
 const run = (args, e = env) => new Promise((ok, ko) =>
   execFile('node', [VOICE_JS, ...args], { cwd: work, env: e }, (err, out) => (err ? ko(err) : ok(out))));
+// Same, but resolves with stdout + stderr (warnings) and never rejects.
+const runAll = (args, e) => new Promise((ok) =>
+  execFile('node', [VOICE_JS, ...args], { cwd: work, env: e }, (err, out, errOut) => ok(`${out}${errOut}${err ? String(err) : ''}`)));
 
 try {
   writeFileSync(join(work, 'plan.json'), JSON.stringify({
@@ -112,8 +119,31 @@ try {
   const numeric = await run(['--engine', 'google', '--voice', 'th-TH-Chirp3-HD-Test', '--only', '7']).then(String, String);
   check(numeric.includes('assets/voice/7.mp3'), '--only matches a numeric step id');
 
-  const noKey = await run(['--engine', 'google', '--voice', 'th-TH-A'], { ...env, GOOGLE_TTS_API_KEY: '' }).then(() => '', String);
-  check(noKey.includes('GOOGLE_TTS_API_KEY is not set'), 'missing key fails with a clear message');
+  const noKey = await run(['--engine', 'google', '--voice', 'th-TH-A'], noKeyEnv).then(() => '', String);
+  check(noKey.includes('GOOGLE_TTS_API_KEY is not set') && noKey.includes('.config/tvideo/google-tts.env'), 'missing key fails with a clear message naming the key file');
+
+  // Key from a file: agent shells don't keep an `export` between commands.
+  const list = ['--engine', 'google', '--list'];
+  mkdirSync(join(home, '.config/tvideo'), { recursive: true });
+  const keyFile = join(home, '.config/tvideo/google-tts.env');
+  writeFileSync(keyFile, 'GOOGLE_TTS_API_KEY=fromfile\n', { mode: 0o600 });
+  calls.length = 0;
+  const quiet = await runAll(list, noKeyEnv);
+  check(calls[0]?.key === 'fromfile' && !quiet.includes('chmod'), 'the default key file is read (mode 600: no warning)');
+  calls.length = 0;
+  await run(list, { ...env, GOOGLE_TTS_API_KEY: 'fromenv' });
+  check(calls[0]?.key === 'fromenv', 'a key already in the environment wins over the file');
+  const other = join(work, 'other.env');
+  writeFileSync(other, 'GOOGLE_TTS_API_KEY=fromother\n', { mode: 0o600 });
+  calls.length = 0;
+  await run(list, { ...noKeyEnv, TV_ENV_FILE: other });
+  check(calls[0]?.key === 'fromother', 'TV_ENV_FILE points at another file');
+  chmodSync(keyFile, 0o644);
+  calls.length = 0;
+  const loud = await runAll(list, noKeyEnv);
+  check(calls[0]?.key === 'fromfile' && loud.includes('chmod 600'), 'a key file others can read still works but warns');
+  const missing = await runAll(list, { ...noKeyEnv, TV_ENV_FILE: join(work, 'nope.env') });
+  check(missing.includes('nope.env'), 'a TV_ENV_FILE that does not exist is named in the error');
 } finally {
   server.close();
 }

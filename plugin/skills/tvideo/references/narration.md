@@ -43,10 +43,17 @@ language (the default Whisper `small.en` is no help for Thai).
 
 An alternative with many native voices (Thai included) and a larger free tier.
 
-1. In Google Cloud Console enable **Cloud Text-to-Speech API**, create an API
-   key (APIs & Services → Credentials), and have the user
-   `export GOOGLE_TTS_API_KEY=...` in their own shell — never paste it into chat
-   or files.
+1. In Google Cloud Console enable **Cloud Text-to-Speech API** and create an API
+   key (APIs & Services → Credentials). The key never goes into chat, and you never
+   write it yourself: have the user put it in a file only they can read —
+   `~/.config/tvideo/google-tts.env`, containing `GOOGLE_TTS_API_KEY=…`, mode 600
+   (`mkdir -p ~/.config/tvideo && touch ~/.config/tvideo/google-tts.env && chmod 600 ~/.config/tvideo/google-tts.env`,
+   then they paste the line in with an editor). `voice.mjs` reads that file when
+   the key isn't already in the environment (another path: `TV_ENV_FILE=<file>`),
+   and warns if others can read it. An `export GOOGLE_TTS_API_KEY=…` in the user's
+   own shell still works, but agent harnesses rarely carry it between commands;
+   `node --env-file=<file> <skill>/scripts/voice.mjs …` works for one command on
+   any Node.
 2. List voices: `node <skill>/scripts/voice.mjs --engine google --list --lang th-TH`
    (catalog: https://cloud.google.com/text-to-speech/docs/list-voices-and-types).
    `Chirp3-HD` voices sound most natural; run `--sample "<a real line>"` with 2–3 voices and let the user choose.

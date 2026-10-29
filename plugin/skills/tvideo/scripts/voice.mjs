@@ -15,7 +15,7 @@
 // file) — TTS quota is small on free plans, so never re-bill unchanged lines.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -41,9 +41,24 @@ const VOICE = arg('voice');
 // goes in a header, not the URL, so it never lands in a proxy/access log.
 // TV_GOOGLE_TTS_URL exists only so tests can point this at a local fake.
 const GOOGLE = process.env.TV_GOOGLE_TTS_URL ?? 'https://texttospeech.googleapis.com/v1';
+// The key can live in a file the user fills in: agent shells rarely keep an
+// `export` from one command to the next. A key already in the environment wins.
+const KEY_FILE = process.env.TV_ENV_FILE || join(homedir(), '.config/tvideo/google-tts.env');
+const googleKey = () => {
+  if (process.env.GOOGLE_TTS_API_KEY) return process.env.GOOGLE_TTS_API_KEY;
+  if (process.env.TV_ENV_FILE && !existsSync(KEY_FILE)) throw new Error(`TV_ENV_FILE points at ${KEY_FILE}, which does not exist.`);
+  if (existsSync(KEY_FILE)) {
+    if (!process.loadEnvFile) throw new Error(`this Node can't read ${KEY_FILE} itself — run: node --env-file=${KEY_FILE} <voice.mjs …>`);
+    // Group/other bits set: anyone else on the machine can read the key.
+    if (process.platform !== 'win32' && statSync(KEY_FILE).mode & 0o077) console.warn(`! ${KEY_FILE} is readable by others — run: chmod 600 ${KEY_FILE}`);
+    delete process.env.GOOGLE_TTS_API_KEY; // an empty value would block loadEnvFile
+    process.loadEnvFile(KEY_FILE);
+  }
+  return process.env.GOOGLE_TTS_API_KEY;
+};
 const google = async (path, body) => {
-  const key = process.env.GOOGLE_TTS_API_KEY;
-  if (!key) throw new Error('GOOGLE_TTS_API_KEY is not set (Cloud Console → APIs & Services → Credentials; enable "Cloud Text-to-Speech API").');
+  const key = googleKey();
+  if (!key) throw new Error(`GOOGLE_TTS_API_KEY is not set — put GOOGLE_TTS_API_KEY=… in ${KEY_FILE} (chmod 600), or export it (Cloud Console → APIs & Services → Credentials; enable "Cloud Text-to-Speech API").`);
   const res = await fetch(`${GOOGLE}${path}`, {
     method: body ? 'POST' : 'GET',
     headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
