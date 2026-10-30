@@ -79,11 +79,11 @@ test('pickFiles draws the panel, taps rows + Open and sets the real files', asyn
 
 test('under CSP style-src self the rows still have a box', async ({ browser }) => {
   const page = await setup(browser, 'en-US', `<head><meta http-equiv="Content-Security-Policy" content="style-src 'self'"></head>${HTML}`);
-  const run = pickFiles(page, page.locator('#one'), a);
   const row = page.locator('#tvideo-filedialog .row');
-  await row.waitFor();
-  expect((await row.boundingBox())!.width).toBeGreaterThan(100);
-  await run;
+  let width = 0;
+  page.locator('#tvideo-filedialog .panel').waitFor().then(async () => { width = (await row.boundingBox())?.width ?? 0; }, () => {});
+  await pick(page, pickFiles(page, page.locator('#one'), a));
+  expect(width).toBeGreaterThan(100);
   expect(await names(page, 'one')).toEqual(['invoice-october.pdf']);
 });
 
@@ -95,7 +95,19 @@ test('a trigger that removes itself on click does not hang the pick', async ({ b
 });
 
 test('files that do not match accept are refused before the panel is drawn', async ({ browser }) => {
-  const page = await setup(browser, 'en-US', '<body><input id=one type=file accept=".pdf"></body>');
+  const page = await setup(browser, 'en-US', '<body><input id=one type=file accept=".pdf"><input id=img type=file accept="image/*"></body>');
   await expect(pickFiles(page, page.locator('#one'), b)).rejects.toThrow(/does not match accept/);
   await expect(page.locator('#tvideo-filedialog')).toHaveCount(0);
+  // An extension we have no mime for is let through for mime entries; Chrome would know it.
+  const svg = join(dir, 'logo.svg');
+  writeFileSync(svg, '<svg/>');
+  await pick(page, pickFiles(page, page.locator('#img'), svg));
+  expect(await names(page, 'img')).toEqual(['logo.svg']);
+});
+
+test('a trigger inside a modal dialog keeps the panel in that dialog, even when the input is outside', async ({ browser }) => {
+  const page = await setup(browser, 'en-US', `<body style="margin:0;height:600px"><input id=one type=file hidden>
+<dialog id=dlg><button id=btn>Upload</button></dialog><script>btn.onclick = () => one.click(); dlg.showModal();</script></body>`);
+  await pick(page, pickFiles(page, page.locator('#btn'), a));
+  expect(await names(page, 'one')).toEqual(['invoice-october.pdf']);
 });

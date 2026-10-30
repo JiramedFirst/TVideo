@@ -69,13 +69,17 @@ const MIME: Record<string, string> = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 };
-/** The chooser's `accept` list: `.ext`, `type/*` or an exact mime. shortcut: an extension missing from MIME matches only `.ext` entries. */
-const accepts = (accept: string, f: Item) => accept.toLowerCase().split(',').some((e) => {
-  e = e.trim();
+/** The chooser's `accept` list: `.ext`, `type/*` or an exact mime. A file whose mime we don't know is let through
+ *  for mime entries (Chrome would know it); only a clear mismatch is refused. */
+const accepts = (accept: string, f: Item) => {
   const mime = Object.hasOwn(MIME, f.ext) ? MIME[f.ext] : undefined;
-  return e.startsWith('.') ? e === `.${f.ext}` : e.endsWith('/*') ? !!mime?.startsWith(e.slice(0, -1)) : e === mime;
-});
-type Mount = { host: string; css: string; files: Item[]; locale?: string; folder?: string; labels: FileDialogOptions['labels'] };
+  const name = f.name.toLowerCase();
+  return accept.toLowerCase().split(',').map((e) => e.trim()).filter(Boolean).some((e) =>
+    e.startsWith('.') ? name.endsWith(e) : !mime || (e.endsWith('/*') ? mime.startsWith(e.slice(0, -1)) : e === mime));
+};
+const MODALS = 'dialog,[role=dialog],[role=alertdialog],[aria-modal=true]';
+type Mount = { host: string; css: string; files: Item[]; locale?: string; folder?: string; labels: FileDialogOptions['labels'];
+  modal: Element | null; modals: string };
 
 /** Build the panel next to `el`'s page chrome. Runs in the page; returns nothing, everything is tappable. */
 function mount(el: HTMLElement, c: Mount) {
@@ -116,8 +120,8 @@ function mount(el: HTMLElement, c: Mount) {
   const sheet = new CSSStyleSheet();
   sheet.replaceSync(c.css);
   root.adoptedStyleSheets = [sheet];
-  // Inside the field's modal: a <dialog> top layer or a modal's click-outside would block or close it.
-  (el.closest('dialog,[role=dialog],[role=alertdialog],[aria-modal=true]') ?? document.body).append(host);
+  // Inside the trigger's (else the input's) modal: a <dialog> top layer or a modal's click-outside would block or close it.
+  ((c.modal?.isConnected ? c.modal : null) ?? el.closest(c.modals) ?? document.body).append(host);
 
   const svg = (d: string) => `<svg viewBox="0 0 24 24">${d}</svg>`;
   const I = {
@@ -184,13 +188,16 @@ export async function pickFiles(page: Page, trigger: Locator, files: string | st
   });
 
   // Listening before the click makes Playwright suppress the native panel.
-  const chooser = page.waitForEvent('filechooser', { timeout: 10_000 });
+  const chooser = page.waitForEvent('filechooser', { timeout: 0 });
   chooser.catch(() => {});
+  // The trigger's modal, read before the click (a menu item may vanish): the panel must sit in it.
+  const modal = await trigger.evaluateHandle((el, sel) => el.closest(sel), MODALS);
   await tap(page, trigger);
-  const fc = await chooser.catch((e) => {
-    throw e?.name === 'TimeoutError'
-      ? new Error('pickFiles: the trigger did not open a file chooser within 10 s — pass the <input type=file> or the control that clicks it') : e;
-  });
+  // 10 s from the click, not from the glide there.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const fc = await Promise.race([chooser, new Promise<never>((_, no) => {
+    timer = setTimeout(() => no(new Error('pickFiles: the trigger did not open a file chooser within 10 s — pass the <input type=file> or the control that clicks it')), 10_000);
+  })]).finally(() => clearTimeout(timer));
   if (items.length > 1 && !fc.isMultiple()) throw new Error('pickFiles: the input is not "multiple" but more than one file was given');
 
   // Anchor on the input, not the trigger: a menu item or spinner may be gone after the click.
@@ -199,7 +206,7 @@ export async function pickFiles(page: Page, trigger: Locator, files: string | st
     const accept = (await input.getAttribute('accept'))?.trim();
     if (accept) for (const f of items) if (!accepts(accept, f)) throw new Error(`pickFiles: "${f.name}" does not match accept="${accept}"`);
 
-    await input.evaluate(mount, { host: HOST, css: CSS, files: items, locale: opts.locale, folder: opts.folder, labels: opts.labels });
+    await input.evaluate(mount, { host: HOST, css: CSS, files: items, locale: opts.locale, folder: opts.folder, labels: opts.labels, modal, modals: MODALS });
     // The panel lives in the input's frame; Playwright's CSS engine pierces the open shadow root.
     const pop = (await input.ownerFrame())!.locator(HOST);
     try {
@@ -207,10 +214,12 @@ export async function pickFiles(page: Page, trigger: Locator, files: string | st
       if (!REHEARSE) await page.waitForTimeout(400); // let the viewer see the selection and the blue Open
       await tap(page, pop.locator('.open'));
     } finally {
-      await pop.evaluateAll((els) => els.forEach((e) => e.remove())); // evaluateAll doesn't wait for the element
+      // evaluateAll doesn't wait for the element; best effort so a tap's real error isn't replaced
+      await pop.evaluateAll((els) => els.forEach((e) => e.remove())).catch(() => {});
     }
     await fc.setFiles(paths); // before dispose: the chooser shares this handle
   } finally {
     await input.dispose();
+    await modal.dispose().catch(() => {});
   }
 }
