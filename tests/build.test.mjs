@@ -249,6 +249,9 @@ if (process.platform !== 'win32') {
   check(/step 2 \(s02\) zoom: must be an object/.test(err(withStep({ zoom: 1.6 }))), 'zoom given as a number is refused');
   check(/plan\.json intro: must be an object \{narration\}/.test(err({ ...PLAN, intro: 'Welcome' })), 'intro given as text is refused');
   check(/plan\.json step 1: must be an object/.test(err({ ...PLAN, steps: [null, ...PLAN.steps.slice(1)] })), 'a null step is refused with a plan.json message');
+  check(/zoom\.ring: must be an object \{x, y, w, h\} \(or true, or the tap number/.test(err(withStep({ zoom: { ring: '2' } }))), 'a ring given as text names the tap-number shorthand');
+  const off = project({ plan: { ...withStep({ mask: false, zoom: { ring: null, scale: 1.4 } }), intro: null } }).build();
+  check(!off.error, `null / false still mean "off"${off.error ? `: ${off.error}` : ''}`);
   const both = err(withStep({ captoin: 'x', zoom: { ring: true, holdFirst: true } }));
   check(/captoin/.test(both) && /holdFirst/.test(both), 'every unknown key is reported at once');
   const ok = project({ plan: {

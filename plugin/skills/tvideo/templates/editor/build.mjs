@@ -38,12 +38,13 @@ const KEYS = {
   mask: ['x', 'y', 'w', 'h', 'text', 'after', 'fontSize', 'align', 'bg', 'color'],
 };
 const planProblems = [];
-// Returns whether `val` is an object whose keys could be checked; undefined = not given.
+const SHORTHAND = { zoom: ' (or true)', 'zoom.ring': ' (or true, or the tap number 1, 2, …)' };
+// Returns whether `val` is an object whose keys could be checked; undefined/null/false = off, as the readers treat them.
 const checkKeys = (val, kind, where) => {
-  if (val === undefined) return false;
+  if (val == null || val === false) return false;
   const at = `plan.json${where && ` ${where}`}`;
-  if (!val || typeof val !== 'object' || Array.isArray(val)) {
-    planProblems.push(`${at}: must be an object {${KEYS[kind].join(', ')}}, not ${JSON.stringify(val)}.`);
+  if (typeof val !== 'object' || Array.isArray(val)) {
+    planProblems.push(`${at}: must be an object {${KEYS[kind].join(', ')}}${SHORTHAND[kind] ?? ''}, not ${JSON.stringify(val)}.`);
     return false;
   }
   for (const k of Object.keys(val)) {
@@ -60,7 +61,8 @@ if (!Array.isArray(plan.steps)) planProblems.push('plan.json: "steps" must be a 
 else plan.steps.forEach((s, i) => {
   // By position: ids may be missing or numeric, so an id alone could name the wrong step.
   const w = `step ${i + 1}${s?.id != null && s.id !== '' ? ` (${s.id})` : ''}`;
-  if (!checkKeys(s ?? null, 'the step', w)) return;
+  if (s == null || s === false) return void planProblems.push(`plan.json ${w}: must be an object {${KEYS['the step'].join(', ')}}, not ${JSON.stringify(s)}.`);
+  if (!checkKeys(s, 'the step', w)) return;
   // zoom: true/false and ring: true/N are shorthands, not objects.
   if (typeof s.zoom !== 'boolean') checkKeys(s.zoom, 'zoom', `${w} zoom`);
   const ring = s.zoom?.ring;
