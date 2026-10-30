@@ -43,7 +43,7 @@ button{all:unset;box-sizing:border-box;cursor:default}
 .hd>*{position:absolute;top:0;height:27px;line-height:27px;white-space:nowrap}
 .hd i{top:6px;width:1px;height:15px;background:#d8d8d8}
 .rows{left:178px;top:97px;width:676px;height:285px;overflow:hidden}
-.row{position:relative;height:23px;border-radius:5px;font-size:14px;line-height:23px;white-space:nowrap;color:#262626}
+.row{position:relative;display:block;width:676px;height:23px;border-radius:5px;font-size:14px;line-height:23px;white-space:nowrap;color:#262626}
 .row:nth-child(even){background:#f4f4f4}
 .row>*{position:absolute;top:0}
 .row .ic{left:16px;top:3px;width:18px;height:17px}
@@ -52,13 +52,29 @@ button{all:unset;box-sizing:border-box;cursor:default}
 .row .kd{left:381px;width:110px;overflow:hidden;color:#777}
 .row .dt{left:496px;color:#777}
 .row.sel{background:#0b5fd8;color:#fff}.row.sel>:not(.ic){color:#fff}
+.p1{left:188px;width:48px}.p2{left:244px;width:65px;gap:14px}.p3{left:317px;width:65px;gap:14px}
+.hn{left:45px}.hc{left:262px;width:12px}.hc svg{width:12px;height:27px}.hs{left:281px}.hk{left:378px}.hda{left:493px}
+.hd i.i1{left:276px}.hd i.i2{left:373px}.hd i.i3{left:488px}
 .sep{left:168px;top:382px;width:712px;height:1px;background:#dcdcdc}
 .btn{top:404px;width:78px;height:24px;border-radius:6px;background:#ebebeb;text-align:center;line-height:24px;font-size:14px;color:#262626}
 .cancel{left:695px}.open{left:782px;color:#b4b4b4;background:#efefef}
-.open.ready{background:#0b6cff;color:#fff}`;
+.open.ready{background:#0b6cff;color:#fff}
+svg.ic,svg.fi{fill:#a58be6;stroke:none}`; // classes, not inline styles: a CSP style-src 'self' blocks inline styles
 
 
 type Item = { name: string; size: number; ext: string };
+const MIME: Record<string, string> = {
+  pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
+  csv: 'text/csv', txt: 'text/plain', xls: 'application/vnd.ms-excel', doc: 'application/msword',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+};
+/** The chooser's `accept` list: `.ext`, `type/*` or an exact mime. shortcut: an extension missing from MIME matches only `.ext` entries. */
+const accepts = (accept: string, f: Item) => accept.toLowerCase().split(',').some((e) => {
+  e = e.trim();
+  const mime = Object.hasOwn(MIME, f.ext) ? MIME[f.ext] : undefined;
+  return e.startsWith('.') ? e === `.${f.ext}` : e.endsWith('/*') ? !!mime?.startsWith(e.slice(0, -1)) : e === mime;
+});
 type Mount = { host: string; css: string; files: Item[]; locale?: string; folder?: string; labels: FileDialogOptions['labels'] };
 
 /** Build the panel next to `el`'s page chrome. Runs in the page; returns nothing, everything is tappable. */
@@ -69,7 +85,8 @@ function mount(el: HTMLElement, c: Mount) {
   const L = {
     cancel: t('Cancel', 'ยกเลิก'), open: t('Open', 'เปิด'), search: t('Search', 'ค้นหา'), name: t('Name', 'ชื่อ'),
     size: t('Size', 'ขนาด'), kind: t('Kind', 'ชนิด'), dateAdded: t('Date Added', 'วันที่เพิ่ม'),
-    favorites: t('Favorites', 'รายการโปรด'), locations: t('Locations', 'ตำแหน่ง'), ...c.labels,
+    favorites: t('Favorites', 'รายการโปรด'), locations: t('Locations', 'ตำแหน่ง'),
+    ...Object.fromEntries(Object.entries(c.labels ?? {}).filter(([, v]) => v != null)), // explicit undefined must not wipe a default
   };
   const esc = (s: string) => s.replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[m]!);
   const kinds: Record<string, [string, string]> = {
@@ -78,8 +95,13 @@ function mount(el: HTMLElement, c: Mount) {
     xlsx: ['Excel spreadsheet', 'สเปรดชีต Excel'], docx: ['Word document', 'เอกสาร Word'], zip: ['ZIP archive', 'ไฟล์เก็บถาวร ZIP'],
   };
   // Finder counts in thousands: "24 KB", "1.2 MB".
-  const fmtSize = (n: number) => n < 1000 ? `${n} ${t('bytes', 'ไบต์')}` : n < 1e6 ? `${Math.round(n / 1e3)} KB`
-    : n < 1e9 ? `${(n / 1e6).toFixed(1)} MB` : `${(n / 1e9).toFixed(1)} GB`;
+  const fmtSize = (n: number) => {
+    if (n < 1000) return n === 1 ? `1 ${t('byte', 'ไบต์')}` : `${n} ${t('bytes', 'ไบต์')}`;
+    const U = ['KB', 'MB', 'GB'], r = (x: number, u: number) => (u ? +x.toFixed(1) : Math.round(x));
+    let v = n / 1e3, u = 0;
+    while (u < 2 && r(v, u) >= 1000) { v /= 1e3; u++; } // 999 500 B rounds to 1000 KB: roll to "1 MB"
+    return `${r(v, u)} ${U[u]}`;
+  };
   const now = new Date();
   const when = new Intl.DateTimeFormat(loc, { calendar: 'gregory', day: 'numeric', month: 'short', year: 'numeric' }).format(now) + ' ' +
     new Intl.DateTimeFormat(loc, { hour: '2-digit', minute: '2-digit', hour12: false }).format(now);
@@ -110,26 +132,26 @@ function mount(el: HTMLElement, c: Mount) {
     list: svg('<path d="M4 7h1M4 12h1M4 17h1M9 7h11M9 12h11M9 17h11"/>'), grid: svg('<path d="M4 5h4v4H4zM10 5h4v4h-4zM16 5h4v4h-4zM4 11h4v4H4zM10 11h4v4h-4zM16 11h4v4h-4z"/>'),
     chev: svg('<path d="M7 10l5 5 5-5"/>'), updown: svg('<path d="M8 10l4-4 4 4M8 14l4 4 4-4"/>'), mag: svg('<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/>'),
   };
-  const folder = `<svg class="ic" viewBox="0 0 18 17" style="fill:#a58be6;stroke:none"><path d="M1 3a2 2 0 012-2h4l2 2h6a2 2 0 012 2v9a2 2 0 01-2 2H3a2 2 0 01-2-2z" fill="#8f73dd"/><path d="M1 6h16v8a2 2 0 01-2 2H3a2 2 0 01-2-2z"/></svg>`;
-  const file = `<svg class="ic" viewBox="0 0 18 17" style="fill:#a58be6;stroke:none"><path d="M4 0h7l4 4v13H4z"/><path d="M11 0v4h4z" fill="#8f73dd"/></svg>`;
+  const folder = `<svg class="fi" viewBox="0 0 18 17"><path d="M1 3a2 2 0 012-2h4l2 2h6a2 2 0 012 2v9a2 2 0 01-2 2H3a2 2 0 01-2-2z" fill="#8f73dd"/><path d="M1 6h16v8a2 2 0 01-2 2H3a2 2 0 01-2-2z"/></svg>`;
+  const file = `<svg class="ic" viewBox="0 0 18 17"><path d="M4 0h7l4 4v13H4z"/><path d="M11 0v4h4z" fill="#8f73dd"/></svg>`;
   const si = (ic: string, txt: string, on = false) => `<div class="si${on ? ' on' : ''}">${ic}${esc(txt)}</div>`;
   const place = c.folder ?? t('Documents', 'เอกสาร');
 
   const rows = c.files.map((f, i) => {
-    const k = kinds[f.ext];
-    return `<button class="row" data-i="${i}" style="display:block;width:676px">${file}<span class="nm">${esc(f.name)}</span>` +
+    const k = Object.hasOwn(kinds, f.ext) ? kinds[f.ext] : undefined;
+    return `<button class="row" data-i="${i}">${file}<span class="nm">${esc(f.name)}</span>` +
       `<span class="sz">${fmtSize(f.size)}</span><span class="kd">${esc(k ? t(...k) : t('Document', 'เอกสาร'))}</span><span class="dt">${when}</span></button>`;
   }).join('');
   root.innerHTML = `<div class="panel">
 <div class="sb">${si(I.clock, t('Recents', 'ล่าสุด'))}<h6>${esc(L.favorites)}</h6>${si(I.desk, t('Desktop', 'เดสก์ท็อป'))}${si(I.doc, t('Documents', 'เอกสาร'), true)}${si(I.down, t('Downloads', 'รายการดาวน์โหลด'))}
 <h6>${esc(L.locations)}</h6>${si(I.cloud, 'iCloud Drive')}${si(I.hd, 'Macintosh HD')}</div>
-<div class="pill" style="left:188px;width:48px">${I.back.replace('<svg', '<svg class="dim"')}<span class="gap"></span>${I.fwd.replace('<svg', '<svg class="dim"')}</div>
-<div class="pill" style="left:244px;width:65px;gap:14px">${I.list}${I.chev}</div>
-<div class="pill" style="left:317px;width:65px;gap:14px">${I.grid}${I.chev}</div>
-<div class="fold">${folder.replace('class="ic"', '')}<span>${esc(place)}</span>${I.updown}</div>
+<div class="pill p1">${I.back.replace('<svg', '<svg class="dim"')}<span class="gap"></span>${I.fwd.replace('<svg', '<svg class="dim"')}</div>
+<div class="pill p2">${I.list}${I.chev}</div>
+<div class="pill p3">${I.grid}${I.chev}</div>
+<div class="fold">${folder}<span>${esc(place)}</span>${I.updown}</div>
 <div class="srch">${I.mag}${esc(L.search)}</div>
-<div class="hd"><span style="left:45px">${esc(L.name)}</span><span style="left:262px;width:12px">${I.chev.replace('<svg', '<svg style="width:12px;height:27px"')}</span><i style="left:276px"></i>
-<span style="left:281px">${esc(L.size)}</span><i style="left:373px"></i><span style="left:378px">${esc(L.kind)}</span><i style="left:488px"></i><span style="left:493px">${esc(L.dateAdded)}</span></div>
+<div class="hd"><span class="hn">${esc(L.name)}</span><span class="hc">${I.chev}</span><i class="i1"></i>
+<span class="hs">${esc(L.size)}</span><i class="i2"></i><span class="hk">${esc(L.kind)}</span><i class="i3"></i><span class="hda">${esc(L.dateAdded)}</span></div>
 <div class="rows">${rows}</div><div class="sep"></div>
 <button class="btn cancel">${esc(L.cancel)}</button><button class="btn open">${esc(L.open)}</button></div>`;
   const panel = root.querySelector<HTMLElement>('.panel')!;
@@ -153,30 +175,42 @@ export async function pickFiles(page: Page, trigger: Locator, files: string | st
   if (!paths.length) throw new Error('pickFiles: no files given');
   const items: Item[] = paths.map((p) => {
     let st;
-    try { st = statSync(p); } catch { throw new Error(`pickFiles: "${p}" does not exist`); }
+    try { st = statSync(p); } catch (e) {
+      const err = e as NodeJS.ErrnoException;
+      throw new Error(err.code === 'ENOENT' ? `pickFiles: "${p}" does not exist` : `pickFiles: cannot read "${p}": ${err.message}`);
+    }
     if (!st.isFile()) throw new Error(`pickFiles: "${p}" is not a file`);
     return { name: basename(p), size: st.size, ext: extname(p).slice(1).toLowerCase() };
   });
 
   // Listening before the click makes Playwright suppress the native panel.
-  const chooser = page.waitForEvent('filechooser');
+  const chooser = page.waitForEvent('filechooser', { timeout: 10_000 });
   chooser.catch(() => {});
   await tap(page, trigger);
-  const fc = await chooser;
+  const fc = await chooser.catch((e) => {
+    throw e?.name === 'TimeoutError'
+      ? new Error('pickFiles: the trigger did not open a file chooser within 10 s — pass the <input type=file> or the control that clicks it') : e;
+  });
   if (items.length > 1 && !fc.isMultiple()) throw new Error('pickFiles: the input is not "multiple" but more than one file was given');
 
-  await trigger.evaluate(mount, { host: HOST, css: CSS, files: items, locale: opts.locale, folder: opts.folder, labels: opts.labels });
-  // The panel lives in the trigger's frame; Playwright's CSS engine pierces the open shadow root.
-  const handle = (await trigger.elementHandle())!;
-  const frame = await handle.ownerFrame();
-  await handle.dispose();
-  const pop = frame!.locator(HOST);
+  // Anchor on the input, not the trigger: a menu item or spinner may be gone after the click.
+  const input = await fc.element();
   try {
-    for (let i = 0; i < items.length; i++) await tap(page, pop.locator(`[data-i="${i}"]`));
-    if (!REHEARSE) await page.waitForTimeout(400); // let the viewer see the selection and the blue Open
-    await tap(page, pop.locator('.open'));
+    const accept = (await input.getAttribute('accept'))?.trim();
+    if (accept) for (const f of items) if (!accepts(accept, f)) throw new Error(`pickFiles: "${f.name}" does not match accept="${accept}"`);
+
+    await input.evaluate(mount, { host: HOST, css: CSS, files: items, locale: opts.locale, folder: opts.folder, labels: opts.labels });
+    // The panel lives in the input's frame; Playwright's CSS engine pierces the open shadow root.
+    const pop = (await input.ownerFrame())!.locator(HOST);
+    try {
+      for (let i = 0; i < items.length; i++) await tap(page, pop.locator(`[data-i="${i}"]`));
+      if (!REHEARSE) await page.waitForTimeout(400); // let the viewer see the selection and the blue Open
+      await tap(page, pop.locator('.open'));
+    } finally {
+      await pop.evaluateAll((els) => els.forEach((e) => e.remove())); // evaluateAll doesn't wait for the element
+    }
+    await fc.setFiles(paths); // before dispose: the chooser shares this handle
   } finally {
-    await pop.evaluate((h) => h.remove()).catch(() => {});
+    await input.dispose();
   }
-  await fc.setFiles(paths);
 }

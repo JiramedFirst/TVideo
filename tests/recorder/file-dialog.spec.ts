@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
@@ -12,6 +12,7 @@ const HTML = `<body style="margin:0;font:14px system-ui;height:600px">
 
 const contexts: BrowserContext[] = [];
 test.afterEach(() => Promise.all(contexts.splice(0).map((c) => c.close())));
+test.afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 const dir = mkdtempSync(join(tmpdir(), 'tvideo-fd-'));
 const a = join(dir, 'invoice-october.pdf');
@@ -19,12 +20,12 @@ const b = join(dir, 'ใบแจ้งหนี้-2026-10.png');
 writeFileSync(a, 'a'.repeat(24_000));
 writeFileSync(b, 'b'.repeat(900));
 
-async function setup(browser: Browser, locale: string) {
+async function setup(browser: Browser, locale: string, html = HTML) {
   const ctx = await browser.newContext({ locale, viewport: { width: 1000, height: 600 } });
   contexts.push(ctx);
   await installCursor(ctx);
   const page = await ctx.newPage();
-  await page.setContent(HTML);
+  await page.setContent(html);
   await page.evaluate(() => document.querySelectorAll('input').forEach((el) =>
     el.addEventListener('change', () => { el.dataset.changes = String(Number(el.dataset.changes ?? 0) + 1); })));
   return page;
@@ -74,4 +75,27 @@ test('pickFiles draws the panel, taps rows + Open and sets the real files', asyn
   expect(text).toContain('Open');
   expect(text).toContain('PDF document');
   expect(await names(en, 'one')).toEqual(['invoice-october.pdf']);
+});
+
+test('under CSP style-src self the rows still have a box', async ({ browser }) => {
+  const page = await setup(browser, 'en-US', `<head><meta http-equiv="Content-Security-Policy" content="style-src 'self'"></head>${HTML}`);
+  const run = pickFiles(page, page.locator('#one'), a);
+  const row = page.locator('#tvideo-filedialog .row');
+  await row.waitFor();
+  expect((await row.boundingBox())!.width).toBeGreaterThan(100);
+  await run;
+  expect(await names(page, 'one')).toEqual(['invoice-october.pdf']);
+});
+
+test('a trigger that removes itself on click does not hang the pick', async ({ browser }) => {
+  const page = await setup(browser, 'en-US', `<body style="margin:0;height:600px"><button id=btn>Upload</button><input id=one type=file hidden>
+<script>btn.onclick = () => { one.click(); btn.remove(); };</script></body>`);
+  await pick(page, pickFiles(page, page.locator('#btn'), a));
+  expect(await names(page, 'one')).toEqual(['invoice-october.pdf']);
+});
+
+test('files that do not match accept are refused before the panel is drawn', async ({ browser }) => {
+  const page = await setup(browser, 'en-US', '<body><input id=one type=file accept=".pdf"></body>');
+  await expect(pickFiles(page, page.locator('#one'), b)).rejects.toThrow(/does not match accept/);
+  await expect(page.locator('#tvideo-filedialog')).toHaveCount(0);
 });
