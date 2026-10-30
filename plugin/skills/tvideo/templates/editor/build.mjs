@@ -207,9 +207,10 @@ const steps = plan.steps.map((s, i) => {
   // the still with the ring, then the click and the rest.
   const anchor = ringClick ?? stepClicks[0];
   // The still: the frame of the ringed click (no click data → just before the step).
-  const stillAt = holdFirst && anchor ? Math.max(a0, anchor.t - 0.15) : Math.max(0, a0 - 0.35);
+  let stillAt = holdFirst && anchor ? Math.max(a0, anchor.t - 0.15) : Math.max(0, a0 - 0.35);
+  if (holdFirst && anchor && stillAt - a0 < 0.05) stillAt = a0; // no clip that short: freeze on the step's first frame, no jump back
   // Footage before it plays as its own clip unless it is too short to.
-  const cut = holdFirst && stillAt - a0 >= 0.05 ? stillAt : a0;
+  const cut = holdFirst && anchor ? stillAt : a0;
   const seg = b - a0;
   const minHold = ring ? RING_MIN_HOLD : 0.2;
   const dur = Math.max(seg + minHold, readDur(s.caption), VOICE_LEAD + voiceDur(s.id) + BREATH);
@@ -257,7 +258,7 @@ const steps = plan.steps.map((s, i) => {
     let zAt = (z.at ?? 0.3) + (holdFirst ? hStart - start : 0), zIn = 0.7, zOut = 0.6;
     if (zAt + zIn + zOut > D) {
       // A step shorter than the zoom: squeeze both tweens into it, still ending at scale 1.
-      zAt = Math.min(zAt, Math.max(D / 2, L(hStart))); // never before the still
+      zAt = Math.min(zAt, holdFirst ? Math.max(D / 2, L(hStart)) : D / 2); // holdFirst: never before the still
       const k = (D - zAt) / (zIn + zOut);
       zIn *= k;
       zOut *= k;
@@ -291,7 +292,9 @@ const steps = plan.steps.map((s, i) => {
     const m = s.mask;
     // Source time a0 + after, wherever that plays (footage before the still, or after it):
     // never later than the text it covers, whatever holdFirst does.
-    const from = onScreen(a0 + (m.after ?? 0));
+    const at = a0 + (m.after ?? 0);
+    // Text already there at the freeze point is on the still too, so cover it from the still on.
+    const from = holdFirst && at <= cut ? Math.min(onScreen(at), hStart) : onScreen(at);
     if (L(from) >= D) throw new Error(`step ${s.id}: mask.after ${m.after} is past the end of the step (${r(D)} s on screen) — lower it.`);
     overlays.push(`<div id="mask-${s.id}" class="clip mask" data-start="${L(from)}" data-duration="${toEnd(from)}" data-track-index="1" style="left:${r(m.x * K)}px;top:${r(m.y * K)}px;width:${r(m.w * K)}px;height:${r(m.h * K)}px;font-size:${r((m.fontSize ?? 15) * K)}px;justify-content:${m.align === 'left' ? 'flex-start' : 'flex-end'};background:${m.bg ?? '#fff'};color:${m.color ?? '#141414'}"><span data-layout-ignore>${esc(m.text)}</span></div>`);
   }

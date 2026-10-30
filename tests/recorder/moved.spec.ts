@@ -10,15 +10,18 @@ test('markMoved flags taps whose control scrolled away, not ones that stayed or 
     <button id="scroll" style="position:absolute;top:100px;left:40px">Scroll</button>
     <button id="stay" style="position:fixed;top:200px;left:40px">Stay</button>
     <button id="gone" style="position:absolute;top:300px;left:40px" onclick="this.remove()">Gone</button>
-    <button id="grow" style="position:fixed;top:250px;left:40px" onclick="this.textContent = 'Saving your changes…'">Save</button></body>`);
+    <button id="grow" style="position:fixed;top:250px;left:40px" onclick="this.textContent = 'Saving your changes…'">Save</button>
+    <button id="both" style="position:absolute;top:350px;left:40px" onclick="this.textContent = 'Saving your changes…'">Save</button></body>`);
   const from = clickLog.length;
   await tap(page, page.locator('#scroll'));
   await tap(page, page.locator('#stay'));
   await tap(page, page.locator('#gone'));
   await tap(page, page.locator('#grow'));
+  await tap(page, page.locator('#both'));
   await page.evaluate(() => window.scrollBy(0, 400));
   await markMoved(from);
-  const [scrolled, stayed, gone, grew] = clickLog.slice(from);
+  const [scrolled, stayed, gone, grew, both] = clickLog.slice(from);
+  expect(both.moved).toBe(true); // resized AND scrolled: still a move
   expect(scrolled.moved).toBe(true);
   expect(stayed.moved).toBeUndefined();
   expect(gone.moved).toBeUndefined();

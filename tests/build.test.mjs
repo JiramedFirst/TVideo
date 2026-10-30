@@ -286,6 +286,9 @@ if (process.platform !== 'win32') {
   // Narration with sub-millisecond lengths: the still must end exactly where the click clip starts.
   const odd = project({ plan, clicks, voices: { s01: { path: 'assets/v.mp3', duration: 1.0004 }, s03: { path: 'assets/v.mp3', duration: 6.0004 } } }).build().scene('step-s03');
   check(ms(attr(odd, 'h-s03', 'data-start')) + ms(attr(odd, 'h-s03', 'data-duration')) === ms(attr(odd, 'v-s03', 'data-start')), 'the still meets the click clip with no 1 ms gap or overlap');
+  // holdFirst with no tap to anchor on (a hand-given ring box): the still opens the step and must be masked.
+  const noTap = project({ plan: { ...PLAN, steps: PLAN.steps.map((s) => (s.id === 's01' ? { ...s, holdFirst: true, zoom: { ring: { x: 50, y: 50, w: 20, h: 20 } }, mask: { x: 1, y: 1, w: 9, h: 9, text: 'x' } } : s)) } }).build().scene('step-s01');
+  check(attr(noTap, 'h-s01', 'data-start') === '0' && attr(noTap, 'mask-s01', 'data-start') === '0', 'holdFirst without a tap: the mask covers the still from the start');
   const kept = project({ plan: { ...plan, steps: plan.steps.map((s) => (s.id === 's03' ? { ...s, holdFirst: false } : s)) }, clicks }).build();
   check(/! step s03: the ringed control moved after its tap .* holdFirst: false/.test(kept.warnings) && !kept.scene('step-s03').includes('vpre-s03'),
     'holdFirst: false on a moved control is kept, with a warning');
