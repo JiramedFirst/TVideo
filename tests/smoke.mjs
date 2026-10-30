@@ -102,6 +102,11 @@ try {
   if (!(total > 20 && total < 90)) fail(`unexpected duration ${total}s`);
   if (!existsSync(join(prj, 'assets/holds'))) fail('no hold stills extracted');
   ok(`built ${total}s composition: ${caps.length} captions, ${rings.length} rings`);
+
+  // 4. Recorder helpers that need a browser (native-widget mocks), run from the recorder copy.
+  cpSync(join(ROOT, 'tests/recorder'), join(rec, 'checks'), { recursive: true });
+  if (spawnSync('npx', ['playwright', 'test', '-c', 'checks/playwright.config.ts'], { cwd: rec, stdio: 'inherit' }).status !== 0) fail('recorder helper checks failed');
+  ok('recorder helpers: pickers');
   console.log(`\nsmoke passed — work dir ${work}`);
 } finally {
   server.close();
