@@ -206,8 +206,10 @@ const steps = plan.steps.map((s, i) => {
   // footage before it plays first — the drop-zone click, the file choice — then
   // the still with the ring, then the click and the rest.
   const anchor = ringClick ?? stepClicks[0];
-  let cut = holdFirst && anchor ? Math.min(Math.max(a0, anchor.t - 0.15), b) : a0;
-  if (cut - a0 < 0.05) cut = a0; // too short to play as its own clip
+  // The still: the frame of the ringed click (no click data → just before the step).
+  const stillAt = holdFirst && anchor ? Math.max(a0, anchor.t - 0.15) : Math.max(0, a0 - 0.35);
+  // Footage before it plays as its own clip unless it is too short to.
+  const cut = holdFirst && stillAt - a0 >= 0.05 ? stillAt : a0;
   const seg = b - a0;
   const minHold = ring ? RING_MIN_HOLD : 0.2;
   const dur = Math.max(seg + minHold, readDur(s.caption), VOICE_LEAD + voiceDur(s.id) + BREATH);
@@ -229,13 +231,12 @@ const steps = plan.steps.map((s, i) => {
   const hasHold = hold > 0.04;
   // Where source time t plays in the composition.
   const onScreen = (t) => (holdFirst && t >= cut ? vStart + (t - cut) : start + (t - a0));
-  if (cut > a0) media.push(`<video id="v-${s.id}-pre" class="clip shot" src="${plan.footage}" muted playsinline data-hf-media-start-basis="local" data-start="${L(start)}" data-duration="${L(hStart)}" data-media-start="${r(a0)}" data-track-index="0"></video>`);
+  if (cut > a0) media.push(`<video id="vpre-${s.id}" class="clip shot" src="${plan.footage}" muted playsinline data-hf-media-start-basis="local" data-start="${L(start)}" data-duration="${L(hStart)}" data-media-start="${r(a0)}" data-track-index="0"></video>`);
   media.push(`<video id="v-${s.id}" class="clip shot" src="${plan.footage}" muted playsinline data-hf-media-start-basis="local" data-start="${L(vStart)}" data-duration="${holdFirst || !hasHold ? toEnd(vStart) : L(hStart)}" data-media-start="${r(holdFirst ? cut : a0)}" data-track-index="0"></video>`);
   if (hasHold) {
-    // holdFirst: the frame of the ringed click (no click data → just before
-    // the step). Otherwise `b - 0.2`, the settled result.
-    const still = holdFirst ? (cut > a0 ? cut : Math.max(0, a0 - 0.35)) : b - 0.2;
-    media.push(`<img id="h-${s.id}" class="clip shot" src="${holdFrame(s.id, still)}" data-start="${L(hStart)}" data-duration="${holdFirst ? r(r(vStart) - r(hStart)) : toEnd(hStart)}" data-track-index="0" alt="" />`);
+    // holdFirst: the frame of the ringed click. Otherwise `b - 0.2`, the settled result.
+    const still = holdFirst ? stillAt : b - 0.2;
+    media.push(`<img id="h-${s.id}" class="clip shot" src="${holdFrame(s.id, still)}" data-start="${L(hStart)}" data-duration="${holdFirst ? r(L(vStart) - L(hStart)) : toEnd(hStart)}" data-track-index="0" alt="" />`);
   }
   voice(s.id, start + VOICE_LEAD);
   // A click sound on every recorded press inside this step, mapped from source
@@ -256,7 +257,7 @@ const steps = plan.steps.map((s, i) => {
     let zAt = (z.at ?? 0.3) + (holdFirst ? hStart - start : 0), zIn = 0.7, zOut = 0.6;
     if (zAt + zIn + zOut > D) {
       // A step shorter than the zoom: squeeze both tweens into it, still ending at scale 1.
-      zAt = Math.min(zAt, D / 2);
+      zAt = Math.min(zAt, Math.max(D / 2, L(hStart))); // never before the still
       const k = (D - zAt) / (zIn + zOut);
       zIn *= k;
       zOut *= k;
@@ -276,7 +277,7 @@ const steps = plan.steps.map((s, i) => {
       const re = holdFirst ? vStart : start + dur - 0.6;
       // Follows the (possibly squeezed) zoom-in; never later than 0.35 s (its fade-in) before re.
       const rs = Math.max(holdFirst ? hStart : start, Math.min(holdFirst ? start + zAt + 0.4 : start + seg, re - 0.35));
-      overlays.push(`<div id="ring-${s.id}" class="clip ring" data-start="${L(rs)}" data-duration="${r(re - rs)}" data-track-index="1" style="left:${r((g.x - g.w / 2 - pad) * K)}px;top:${r((g.y - g.h / 2 - pad) * K)}px;width:${r((g.w + pad * 2) * K)}px;height:${r((g.h + pad * 2) * K)}px"><span class="ring-inner"></span></div>`);
+      overlays.push(`<div id="ring-${s.id}" class="clip ring" data-start="${L(rs)}" data-duration="${r(L(re) - L(rs))}" data-track-index="1" style="left:${r((g.x - g.w / 2 - pad) * K)}px;top:${r((g.y - g.h / 2 - pad) * K)}px;width:${r((g.w + pad * 2) * K)}px;height:${r((g.h + pad * 2) * K)}px"><span class="ring-inner"></span></div>`);
       tweens.push(`tl.fromTo('#ring-${s.id} .ring-inner', { opacity: 0, scale: 1.25 }, { opacity: 1, scale: 1, duration: 0.35, ease: 'power2.out' }, ${L(rs)});`);
       tweens.push(`tl.fromTo('#ring-${s.id} .ring-inner', { scale: 1 }, { scale: 1.08, duration: 0.45, immediateRender: false, ease: 'sine.inOut', yoyo: true, repeat: ${Math.max(1, Math.floor((re - rs - 0.35) / 0.45) - 1)} }, ${L(rs + 0.35)});`);
     }
@@ -288,9 +289,9 @@ const steps = plan.steps.map((s, i) => {
     // pass as the real thing, so the type floor can't apply — but the box stays
     // audited, so a misplaced mask is still reported.
     const m = s.mask;
-    // holdFirst: `after` counts from the click that plays after the still (as before the
-    // footage before it was shown); 0 covers the whole step, that footage and the still too.
-    const from = holdFirst && m.after ? vStart + m.after : start + (m.after ?? 0);
+    // Source time a0 + after, wherever that plays (footage before the still, or after it):
+    // never later than the text it covers, whatever holdFirst does.
+    const from = onScreen(a0 + (m.after ?? 0));
     if (L(from) >= D) throw new Error(`step ${s.id}: mask.after ${m.after} is past the end of the step (${r(D)} s on screen) — lower it.`);
     overlays.push(`<div id="mask-${s.id}" class="clip mask" data-start="${L(from)}" data-duration="${toEnd(from)}" data-track-index="1" style="left:${r(m.x * K)}px;top:${r(m.y * K)}px;width:${r(m.w * K)}px;height:${r(m.h * K)}px;font-size:${r((m.fontSize ?? 15) * K)}px;justify-content:${m.align === 'left' ? 'flex-start' : 'flex-end'};background:${m.bg ?? '#fff'};color:${m.color ?? '#141414'}"><span data-layout-ignore>${esc(m.text)}</span></div>`);
   }

@@ -113,13 +113,15 @@ const targets = new WeakMap<Click, Locator>();
  * the tap instead (holdFirst).
  */
 export async function markMoved(from: number): Promise<void> {
-  for (const c of clickLog.slice(from)) {
+  await Promise.all(clickLog.slice(from).map(async (c) => {
     const loc = targets.get(c);
     // count() first: boundingBox() would wait out its timeout for a control that is gone.
-    if (!c.box || !loc || (await loc.count().catch(() => 0)) !== 1) continue;
+    if (!c.box || !loc || (await loc.count().catch(() => 0)) !== 1) return;
     const b = await loc.boundingBox({ timeout: 500 }).catch(() => null);
-    if (b && (Math.abs(b.x + b.width / 2 - c.box.x) > 4 || Math.abs(b.y + b.height / 2 - c.box.y) > 4)) c.moved = true;
-  }
+    // Same size, other place = scrolled; a control that only grew ("Save" → "Saving…") did not move.
+    const sameSize = b && Math.abs(b.width - c.box.w) <= 4 && Math.abs(b.height - c.box.h) <= 4;
+    if (b && sameSize && (Math.abs(b.x + b.width / 2 - c.box.x) > 4 || Math.abs(b.y + b.height / 2 - c.box.y) > 4)) c.moved = true;
+  }));
 }
 
 /** Glide to `target` and log a click there (sound + ring) without clicking — for mocked native widgets. */

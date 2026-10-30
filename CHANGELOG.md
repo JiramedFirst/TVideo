@@ -3,7 +3,9 @@
 ## Unreleased
 
 - Fix: `holdFirst` no longer cuts the step's footage before the ringed tap — it plays up to that tap, freezes there
-  with the ring, then plays on, so earlier taps (`ring: 2`, `3`, …) stay on screen (#4).
+  with the ring, then plays on, so earlier taps (`ring: 2`, `3`, …) stay on screen. `mask.after` now counts from the
+  step start under holdFirst too. Rebuilt holdFirst steps show footage that used to be cut — check it for anything
+  to mask (#4).
 - Fix: the recorder re-measures each tapped control at the step's end and logs `moved` when the page scrolled; the
   editor then holds the frame of the tap (holdFirst) so the ring isn't drawn on the wrong control (#2).
 - Fix: `build.mjs` refuses plan.json keys it doesn't read (typos, or a key in the wrong object such as `holdFirst`
