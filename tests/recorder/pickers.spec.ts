@@ -8,6 +8,7 @@ const HTML = `<body style="margin:0;font:14px system-ui;height:600px">
 <input id="d" type="date" min="2026-10-05" value="2026-10-30" style="position:absolute;left:300px;top:20px">
 <input id="p" type="date" min="2026-10-20" value="2026-11-15" style="position:absolute;left:40px;top:300px">
 <input id="b" type="date" min="2026-10-05" value="2026-10-30" style="position:absolute;left:300px;top:540px">
+<div role="dialog" style="position:fixed;left:50%;top:150px;transform:translateX(-50%)"><input id="t" type="date" value="2026-10-30"></div>
 <dialog id="dlg"><input id="x" type="date" value="2026-10-30"></dialog>
 </body>`;
 
@@ -68,7 +69,16 @@ test('pickMonth / pickDate draw the mock, tap through it and set the real value'
   await th.evaluate(() => (document.getElementById('dlg') as HTMLDialogElement).showModal());
   await pick(th, pickDate(th, th.locator('#x'), '2026-10-12'));
   await committed(th, 'x', '2026-10-12');
+  await th.evaluate(() => (document.getElementById('dlg') as HTMLDialogElement).close());
 
+  // A field in a transformed role=dialog: the mock still opens right under the field.
+  const tf = (await th.locator('#t').boundingBox())!;
+  const shifted = await pick(th, pickDate(th, th.locator('#t'), '2026-10-12'));
+  expect(Math.abs(shifted.box.x - tf.x)).toBeLessThan(2);
+  expect(Math.abs(shifted.box.y - (tf.y + tf.height))).toBeLessThan(2);
+  await committed(th, 't', '2026-10-12');
+
+  await expect(pickDate(th, th.locator('#d'), '0099-03-01')).rejects.toThrow(/not YYYY-MM-DD/);
   await expect(pickDate(th, th.locator('#d'), '2026-10-01')).rejects.toThrow(/outside/);
   await expect(pickMonth(th, th.locator('#m'), '2026-13')).rejects.toThrow(/not YYYY-MM/);
   await expect(pickDate(th, th.locator('#d'), '2026-02-30')).rejects.toThrow(/not YYYY-MM-DD/);

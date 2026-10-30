@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { REHEARSE, clickLog, pointAt, tap } from './cursor';
+import { REHEARSE, logClick, tap } from './cursor';
 
 /**
  * Chrome's native month/date popups are separate OS windows, so Playwright's video
@@ -63,7 +63,7 @@ function mount(el: HTMLInputElement, c: Mount) {
   sheet.replaceSync(c.css);
   root.adoptedStyleSheets = [sheet];
   // Inside the field's modal: a <dialog> top layer or a modal's click-outside would block or close it.
-  (el.closest('dialog,[role=dialog]') ?? document.body).append(host);
+  (el.closest('dialog,[role=dialog],[role=alertdialog],[aria-modal=true]') ?? document.body).append(host);
 
   const cell = (cls: string, txt: string, key: string) =>
     `<button class="${cls}${ok(key) ? '' : ' off'}" ${ok(key) ? '' : 'disabled'} data-k="${key}">${txt}</button>`;
@@ -103,8 +103,10 @@ function mount(el: HTMLInputElement, c: Mount) {
     const r = el.getBoundingClientRect();
     const pop = root.querySelector<HTMLElement>('.pop')!;
     const w = pop.offsetWidth, h = pop.offsetHeight;
-    pop.style.left = `${Math.max(0, Math.min(r.left, innerWidth - w))}px`;
-    pop.style.top = `${r.bottom + h > innerHeight ? Math.max(0, r.top - h) : r.bottom}px`;
+    // A transformed modal makes position:fixed relative to itself, so subtract where the host really sits.
+    const o = host.getBoundingClientRect();
+    pop.style.left = `${Math.max(0, Math.min(r.left, innerWidth - w)) - o.left}px`;
+    pop.style.top = `${(r.bottom + h > innerHeight ? Math.max(0, r.top - h) : r.bottom) - o.top}px`;
   };
   (host as unknown as { __go: (y: number, m: number) => void }).__go = (y, m) => { view.y = y; view.m = m; render(); };
   render();
@@ -116,7 +118,7 @@ async function run(page: Page, input: Locator, kind: 'date' | 'month', value: st
   const shape = kind === 'date' ? /^\d{4}-\d{2}-\d{2}$/ : /^\d{4}-\d{2}$/;
   const [ty, tm, td = 1] = value.split('-').map(Number);
   const d = new Date(ty, tm - 1, td); // round-trip: Date.parse would accept 2026-02-30
-  if (!shape.test(value) || d.getMonth() !== tm - 1 || d.getDate() !== td) {
+  if (!shape.test(value) || d.getFullYear() !== ty || d.getMonth() !== tm - 1 || d.getDate() !== td) {
     throw new Error(`${fn}: "${value}" is not ${kind === 'date' ? 'YYYY-MM-DD' : 'YYYY-MM'}`);
   }
   const { min, max, type } = await input.evaluate((el: HTMLInputElement) => ({ min: el.min, max: el.max, type: el.type }));
@@ -125,11 +127,12 @@ async function run(page: Page, input: Locator, kind: 'date' | 'month', value: st
     throw new Error(`${fn}: ${value} is outside min=${min || '-'} max=${max || '-'}`);
   }
   // Log the field as a click (sound + ring) without clicking it: a real click opens the real popup in headed runs.
-  const box = await pointAt(page, input);
-  clickLog.push({ t: Date.now(), ...(box && { box }) });
+  await logClick(page, input);
   const start = await input.evaluate(mount, { kind, locale: opts.locale, labels: opts.labels, host: HOST, css: CSS });
   // The popup lives in the field's frame; Playwright's CSS engine pierces the open shadow root.
-  const frame = await (await input.elementHandle())!.ownerFrame();
+  const handle = (await input.elementHandle())!;
+  const frame = await handle.ownerFrame();
+  await handle.dispose();
   const pop = frame!.locator(HOST);
   try {
     if (kind === 'date') {
