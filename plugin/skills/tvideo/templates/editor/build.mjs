@@ -334,8 +334,8 @@ const scenes = [{
     <div id="intro-sub" class="sub">${esc(plan.subtitle ?? '')}</div>
     <div id="intro-rule" class="rule"></div>`,
   tl: [
-    logo && "tl.fromTo('#intro-logo', { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: 'power3.out' }, 0.2);",
-    "tl.fromTo('#intro-rule', { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: 'power2.out' }, 0.9);",
+    logo && "tl.fromTo('#intro-logo', { y: 10, opacity: 0 }, { y: 0, opacity: 1, duration: 0.9, ease: 'sine.inOut' }, 0.1);",
+    "tl.fromTo('#intro-rule', { scaleX: 0 }, { scaleX: 1, duration: 0.7, ease: 'sine.inOut' }, 1.0);",
   ],
 }];
 steps.forEach((s, i) => scenes.push({
