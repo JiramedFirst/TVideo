@@ -220,7 +220,7 @@ if (process.platform !== 'win32') {
   const bare = narrated();
   rmSync(join(bare.dir, 'package.json'));
   const nb = bare.build(env);
-  check(nb.html && npmLog(bare).length === 0 && /needs a package\.json/.test(nb.warnings), 'no package.json here: npm is not run (it would edit a parent project)');
+  check(nb.html && npmLog(bare).length === 0 && /npm init -y/.test(nb.warnings), 'no package.json here: npm is not run (it would edit a parent project)');
   const odd = narrated();
   const r = odd.build({ ...env, FAKE_VERSION: '--force' });
   check(r.html && /unexpected hyperframes --version: --force/.test(r.warnings) && npmLog(odd).length === 0, 'an unexpected version string is never passed to npm');

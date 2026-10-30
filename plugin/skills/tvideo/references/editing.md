@@ -79,5 +79,6 @@ Bundled: "Happy Beats / Business Moves Vol. 12" by ende.app, CC BY 4.0 (credit i
 printed on the outro from `music.credit`). Keep it quiet (`volume` 0.15–0.25). With
 narration, `build.mjs` runs the Hyperframes carve automatically (dips the bed under
 the voice). The carve needs `@hyperframes/core` in the clip project; the first such
-build installs it (`npm i -D`, same version as the Hyperframes CLI), so that build
-needs the network.
+build installs it (`npm i -D -E`, same version as the Hyperframes CLI), so that build
+needs the network. It installs only into the clip's own `package.json` (written by
+`hyperframes init`); without one it warns — run `npm init -y` there and rebuild.

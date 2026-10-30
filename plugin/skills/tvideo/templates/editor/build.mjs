@@ -448,7 +448,9 @@ if (music && Object.keys(voices).length) {
     };
     // The CLI doesn't ship core: install it once, pinned to the CLI version. Only with a
     // package.json here — without one, npm would add it to a parent project instead.
-    if (!hasCore() && existsSync('package.json')) {
+    let core = hasCore();
+    if (!core && !existsSync('package.json')) console.warn('! music not carved under the voice: no @hyperframes/core and no package.json to install it into — run `npm init -y` in this clip project, then rebuild.');
+    else if (!core) {
       try {
         // shell on Windows only: npx/npm are .cmd files there, which execFile can't start directly.
         const sh = { shell: process.platform === 'win32' };
@@ -456,12 +458,12 @@ if (music && Object.keys(voices).length) {
         if (!/^\d+\.\d+\.\d+[\w.-]*$/.test(v)) throw new Error(`unexpected hyperframes --version: ${v}`);
         console.log(`installing @hyperframes/core@${v} for the music carve…`);
         execFileSync('npm', ['i', '-D', '-E', `@hyperframes/core@${v}`], { ...sh, stdio: 'inherit' });
+        core = hasCore();
       } catch (e) {
-        console.warn(`! could not install @hyperframes/core: ${e.message}`);
+        console.warn(`! music not carved under the voice: could not install @hyperframes/core (${e.message}) — rebuild to retry.`);
       }
     }
-    if (!hasCore()) console.warn('! music not carved under the voice: no @hyperframes/core — in this project (it needs a package.json) run `npm i -D -E @hyperframes/core@<npx hyperframes --version>`, then rebuild.');
-    else {
+    if (core) {
       try {
         execFileSync('node', [carve, '--comp', 'index.html', '--bed', 'music-bed'], { stdio: 'inherit' });
       } catch {
