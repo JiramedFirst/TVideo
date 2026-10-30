@@ -43,7 +43,7 @@ else {
 }
 const shift = (ms) => Math.max(0, ms + offsetMs);
 const timeline = read('timeline.json').map((s) => ({ ...s, startMs: shift(s.startMs), endMs: shift(s.endMs) }));
-// clicks.json: v1 recorders wrote bare ms numbers, v1.1 writes {ms, box, gone}.
+// clicks.json: v1 recorders wrote bare ms numbers, v1.1 writes {ms, box, gone, moved?}.
 const clicks = read('clicks.json', []).map((c) => (typeof c === 'number' ? { ms: shift(c) } : { ...c, ms: shift(c.ms) }));
 writeFileSync(join(PRJ, 'timeline.json'), JSON.stringify(timeline, null, 2));
 writeFileSync(join(PRJ, 'clicks.json'), JSON.stringify(clicks));

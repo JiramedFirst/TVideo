@@ -114,7 +114,7 @@ const glowAt = b.glowAt != null ? `${b.glowAt[0]}px ${b.glowAt[1]}px` : '78% 18%
 const g2 = { x: 190, y: 870, size: 900, color: 'color-mix(in srgb, var(--accent) 16%, transparent)', ...g2own };
 
 const voices = readJson('voices.json', {});
-// clicks.json: v1 recorders wrote bare ms numbers; v1.1 writes {ms, box, gone}.
+// clicks.json: v1 recorders wrote bare ms numbers; v1.1 writes {ms, box, gone, moved?}.
 const clicks = readJson('clicks.json', []).map((c) => (typeof c === 'number' ? { t: c / 1000 } : { ...c, t: c.ms / 1000 }));
 
 const probe = (file, entries) =>
@@ -192,16 +192,23 @@ const steps = plan.steps.map((s, i) => {
   if ((z?.ring === true || typeof z?.ring === 'number') && !ringClick) throw new Error(`step ${s.id}: ring: ${z.ring} but the step has only ${stepClicks.length} tap(s).`);
   const ring = ringClick ? ringClick.box : z?.ring || null;
   // holdFirst: the step's subject is a control that vanishes once clicked (a
-  // button that navigates away), so show the frame BEFORE the click first, then
-  // play the action. Default: play the action, then hold its end state. Unset →
-  // the recorder knows: a ringed control that disappeared after its click.
-  const holdFirst = s.holdFirst ?? Boolean(ringClick?.gone);
-  // holdFirst starts the action at the ringed click (just after the cursor
-  // arrived), not at the step start: any scroll/glide before it would otherwise
-  // play after a still that already shows the scrolled page — a visible jump back.
+  // button that navigates away), so freeze on the frame of the click, then play
+  // the click. Default: play the action, then hold its end state — whose ring box
+  // is only right if the control is still where it was clicked. Unset → the
+  // recorder knows: a ringed control that disappeared, or moved (the page
+  // scrolled), after its click.
+  const holdFirst = s.holdFirst ?? Boolean(ringClick?.gone || ringClick?.moved);
+  if (ringClick?.moved && !ringClick.gone) {
+    if (s.holdFirst === false) console.warn(`! step ${s.id}: the ringed control moved after its tap (the page scrolled) — with holdFirst: false the ring may sit on the wrong control.`);
+    else if (s.holdFirst === undefined) console.warn(`  step ${s.id}: the ringed control moved after its tap — holding the frame of the tap (holdFirst).`);
+  }
+  // holdFirst freezes at the ringed click (just after the cursor arrived): the
+  // footage before it plays first — the drop-zone click, the file choice — then
+  // the still with the ring, then the click and the rest.
   const anchor = ringClick ?? stepClicks[0];
-  const a = holdFirst && anchor ? Math.max(a0, anchor.t - 0.15) : a0;
-  const seg = b - a;
+  let cut = holdFirst && anchor ? Math.min(Math.max(a0, anchor.t - 0.15), b) : a0;
+  if (cut - a0 < 0.05) cut = a0; // too short to play as its own clip
+  const seg = b - a0;
   const minHold = ring ? RING_MIN_HOLD : 0.2;
   const dur = Math.max(seg + minHold, readDur(s.caption), VOICE_LEAD + voiceDur(s.id) + BREATH);
   const start = T;
@@ -215,20 +222,25 @@ const steps = plan.steps.map((s, i) => {
   const media = [], overlays = [], tweens = [];
   let origin = '';
   const hold = dur - seg;
-  const vStart = holdFirst ? start + hold : start;
-  const hStart = holdFirst ? start : start + seg;
+  // holdFirst: footage [a0, cut) at the start, the still at hStart, footage [cut, b) from vStart.
+  // Otherwise: footage [a0, b) from the start, the still at the end.
+  const hStart = holdFirst ? start + (cut - a0) : start + seg;
+  const vStart = holdFirst ? hStart + hold : start;
   const hasHold = hold > 0.04;
-  media.push(`<video id="v-${s.id}" class="clip shot" src="${plan.footage}" muted playsinline data-hf-media-start-basis="local" data-start="${L(vStart)}" data-duration="${holdFirst || !hasHold ? toEnd(vStart) : L(hStart)}" data-media-start="${r(a)}" data-track-index="0"></video>`);
+  // Where source time t plays in the composition.
+  const onScreen = (t) => (holdFirst && t >= cut ? vStart + (t - cut) : start + (t - a0));
+  if (cut > a0) media.push(`<video id="v-${s.id}-pre" class="clip shot" src="${plan.footage}" muted playsinline data-hf-media-start-basis="local" data-start="${L(start)}" data-duration="${L(hStart)}" data-media-start="${r(a0)}" data-track-index="0"></video>`);
+  media.push(`<video id="v-${s.id}" class="clip shot" src="${plan.footage}" muted playsinline data-hf-media-start-basis="local" data-start="${L(vStart)}" data-duration="${holdFirst || !hasHold ? toEnd(vStart) : L(hStart)}" data-media-start="${r(holdFirst ? cut : a0)}" data-track-index="0"></video>`);
   if (hasHold) {
-    // holdFirst: the frame the action starts from (no click data → just before
+    // holdFirst: the frame of the ringed click (no click data → just before
     // the step). Otherwise `b - 0.2`, the settled result.
-    const still = holdFirst ? (a > a0 ? a : Math.max(0, a0 - 0.35)) : b - 0.2;
-    media.push(`<img id="h-${s.id}" class="clip shot" src="${holdFrame(s.id, still)}" data-start="${L(hStart)}" data-duration="${holdFirst ? L(vStart) : toEnd(hStart)}" data-track-index="0" alt="" />`);
+    const still = holdFirst ? (cut > a0 ? cut : Math.max(0, a0 - 0.35)) : b - 0.2;
+    media.push(`<img id="h-${s.id}" class="clip shot" src="${holdFrame(s.id, still)}" data-start="${L(hStart)}" data-duration="${holdFirst ? r(r(vStart) - r(hStart)) : toEnd(hStart)}" data-track-index="0" alt="" />`);
   }
   voice(s.id, start + VOICE_LEAD);
   // A click sound on every recorded press inside this step, mapped from source
   // time onto where that range plays in the composition.
-  for (const c of stepClicks) if (c.t >= a) sound(sfx('click-soft'), vStart + (c.t - a), 0.5);
+  for (const c of stepClicks) sound(sfx('click-soft'), onScreen(c.t), 0.5);
   if (z) {
     // The zoom origin is the one point that stays put while everything scales away
     // from it — so it belongs ON the control (defaults to the ring centre). Any
@@ -240,7 +252,8 @@ const steps = plan.steps.map((s, i) => {
     // Scene-local times. The zoom-out may not start before the zoom-in ends (its
     // fromTo would snap to full scale) nor end after the scene (the next scene
     // starts at scale 1, a visible cut).
-    let zAt = z.at ?? 0.3, zIn = 0.7, zOut = 0.6;
+    // holdFirst: `at` counts from the still, so the punch-in lands on the ringed control.
+    let zAt = (z.at ?? 0.3) + (holdFirst ? hStart - start : 0), zIn = 0.7, zOut = 0.6;
     if (zAt + zIn + zOut > D) {
       // A step shorter than the zoom: squeeze both tweens into it, still ending at scale 1.
       zAt = Math.min(zAt, D / 2);
@@ -252,7 +265,7 @@ const steps = plan.steps.map((s, i) => {
     tweens.push(`tl.fromTo('#zoom-${s.id}', { scale: 1 }, { scale: ${scale}, duration: ${r(r(zAt + zIn) - r(zAt))}, ease: 'power2.inOut' }, ${r(zAt)});`);
     // holdFirst: zoom back out as the click plays — the page changes under it, and
     // staying zoomed would frame an empty corner of the next screen.
-    const wanted = holdFirst ? Math.max(zAt + 0.8, hold - 0.5) : D - 0.6;
+    const wanted = holdFirst ? Math.max(zAt + 0.8, L(vStart) - 0.5) : D - 0.6;
     const zoomOut = Math.min(Math.max(wanted, zAt + zIn), D - zOut);
     tweens.push(`tl.fromTo('#zoom-${s.id}', { scale: ${scale} }, { scale: 1, duration: ${r(r(zoomOut + zOut) - r(zoomOut))}, immediateRender: false, ease: 'power2.inOut' }, ${r(zoomOut)});`);
     if (ring) {
@@ -260,9 +273,9 @@ const steps = plan.steps.map((s, i) => {
       // footage. Only over the HOLD still — once the click plays, the page
       // changes under it and the ring would mark nothing.
       const g = ring, pad = 6;
-      const re = holdFirst ? start + hold : start + dur - 0.6;
+      const re = holdFirst ? vStart : start + dur - 0.6;
       // Follows the (possibly squeezed) zoom-in; never later than 0.35 s (its fade-in) before re.
-      const rs = Math.max(start, Math.min(holdFirst ? start + zAt + 0.4 : start + seg, re - 0.35));
+      const rs = Math.max(holdFirst ? hStart : start, Math.min(holdFirst ? start + zAt + 0.4 : start + seg, re - 0.35));
       overlays.push(`<div id="ring-${s.id}" class="clip ring" data-start="${L(rs)}" data-duration="${r(re - rs)}" data-track-index="1" style="left:${r((g.x - g.w / 2 - pad) * K)}px;top:${r((g.y - g.h / 2 - pad) * K)}px;width:${r((g.w + pad * 2) * K)}px;height:${r((g.h + pad * 2) * K)}px"><span class="ring-inner"></span></div>`);
       tweens.push(`tl.fromTo('#ring-${s.id} .ring-inner', { opacity: 0, scale: 1.25 }, { opacity: 1, scale: 1, duration: 0.35, ease: 'power2.out' }, ${L(rs)});`);
       tweens.push(`tl.fromTo('#ring-${s.id} .ring-inner', { scale: 1 }, { scale: 1.08, duration: 0.45, immediateRender: false, ease: 'sine.inOut', yoyo: true, repeat: ${Math.max(1, Math.floor((re - rs - 0.35) / 0.45) - 1)} }, ${L(rs + 0.35)});`);
@@ -275,15 +288,17 @@ const steps = plan.steps.map((s, i) => {
     // pass as the real thing, so the type floor can't apply — but the box stays
     // audited, so a misplaced mask is still reported.
     const m = s.mask;
-    const from = (holdFirst ? start + hold : start) + (m.after ?? 0);
+    // holdFirst: `after` counts from the click that plays after the still (as before the
+    // footage before it was shown); 0 covers the whole step, that footage and the still too.
+    const from = holdFirst && m.after ? vStart + m.after : start + (m.after ?? 0);
     if (L(from) >= D) throw new Error(`step ${s.id}: mask.after ${m.after} is past the end of the step (${r(D)} s on screen) — lower it.`);
     overlays.push(`<div id="mask-${s.id}" class="clip mask" data-start="${L(from)}" data-duration="${toEnd(from)}" data-track-index="1" style="left:${r(m.x * K)}px;top:${r(m.y * K)}px;width:${r(m.w * K)}px;height:${r(m.h * K)}px;font-size:${r((m.fontSize ?? 15) * K)}px;justify-content:${m.align === 'left' ? 'flex-start' : 'flex-end'};background:${m.bg ?? '#fff'};color:${m.color ?? '#141414'}"><span data-layout-ignore>${esc(m.text)}</span></div>`);
   }
   // Own track: the chime rings ~2.5 s, so on the last step it runs into the outro
   // whoosh — a deliberate layer, not the overlap the click track must avoid.
-  if (s.chimeAfter !== undefined) sound(sfx('chime'), (holdFirst ? start + hold : start) + s.chimeAfter, 0.45, 7);
+  if (s.chimeAfter !== undefined) sound(sfx('chime'), (holdFirst ? vStart : start) + s.chimeAfter, 0.45, 7);
   T += dur;
-  return { ...s, holdFirst, ring, start, dur, n: i + 1, srcA: a, srcB: b, vStart, hStart, hold, D, media, overlays, tweens, origin };
+  return { ...s, holdFirst, ring, start, dur, n: i + 1, srcA: a0, srcB: b, vStart, hStart, hold, D, media, overlays, tweens, origin };
 });
 
 const outroStart = T;
@@ -471,7 +486,7 @@ console.log(`built index.html — ${N} steps, ${r(total)}s${Object.keys(voices).
 // where each step lands so snapshots can be aimed (`hyperframes snapshot --at`).
 console.log(`  intro      0.00–${introDur.toFixed(2)}`);
 for (const s of steps) {
-  const still = s.hold > 0.04 ? `still ${(s.holdFirst ? s.start : s.vStart + (s.srcB - s.srcA)).toFixed(2)}+${s.hold.toFixed(2)}` : '';
+  const still = s.hold > 0.04 ? `still ${s.hStart.toFixed(2)}+${s.hold.toFixed(2)}` : '';
   console.log(`  ${s.id}  ${s.start.toFixed(2)}–${(s.start + s.dur).toFixed(2)}  (src ${s.srcA.toFixed(2)}–${s.srcB.toFixed(2)}) ${still}${s.holdFirst ? ' holdFirst' : ''}${s.zoom ? ' zoom' : ''}${s.ring ? '+ring' : ''}${s.mask ? ' mask' : ''}`);
 }
 console.log(`  outro      ${outroStart.toFixed(2)}–${total.toFixed(2)}`);

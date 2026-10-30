@@ -1,6 +1,6 @@
 import { writeFile } from 'node:fs/promises';
 import { test, type Locator, type Page, type TestInfo } from '@playwright/test';
-import { REHEARSE, clickLog, installCursor, pendingClicks } from './cursor';
+import { REHEARSE, clickLog, installCursor, markMoved, pendingClicks } from './cursor';
 
 /**
  * Smooth-scroll `target` into view before acting on it. Playwright's own
@@ -24,7 +24,7 @@ export const SYNC_COLOR = '#ff00ff';
 /**
  * Caption timeline for one recording. Create it as the FIRST line of the test
  * body. Writes `timeline.json` (one entry per step: label + startMs/endMs) and
- * `clicks.json` (every `tap`: ms, box, gone) next to the video — the editor
+ * `clicks.json` (every `tap`: ms, box, gone, moved) next to the video — the editor
  * builds the whole cut from those two files.
  *
  * Times are wall-clock from t0, but Playwright's video starts earlier (at page
@@ -54,10 +54,13 @@ export function createTimeline(testInfo: TestInfo, page: Page, accent?: string) 
     async step<T>(label: string, fn: () => Promise<T>): Promise<T> {
       if (!steps.length && syncMs === undefined && !REHEARSE) syncMs = await flash(page, t0);
       const startMs = Date.now() - t0;
+      const firstTap = clickLog.length;
       try {
         return await test.step(label, fn);
       } finally {
         steps.push({ label, startMs, endMs: Date.now() - t0 });
+        // After endMs: the re-measuring falls between steps, not into this one's footage.
+        await markMoved(firstTap);
       }
     },
     async save() {
