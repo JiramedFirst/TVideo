@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0 — 2026-10-30
 
 - Fix: `holdFirst` no longer cuts the step's footage before the ringed tap — it plays up to that tap, freezes there
   with the ring, then plays on, so earlier taps (`ring: 2`, `3`, …) stay on screen. `mask.after` now counts from the
