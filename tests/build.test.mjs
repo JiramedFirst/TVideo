@@ -237,12 +237,26 @@ if (process.platform !== 'win32') {
 {
   const withStep = (patch) => ({ ...PLAN, steps: PLAN.steps.map((s) => (s.id === 's02' ? { ...s, ...patch } : s)) });
   const err = (plan) => project({ plan }).build().error ?? '';
-  check(/plan\.json step s02 zoom: unknown key "holdFirst" — it belongs in the step/.test(err(withStep({ zoom: { ring: true, holdFirst: true } }))), 'holdFirst inside zoom is refused and pointed to the step');
-  check(/plan\.json step s02: unknown key "captoin".*allowed here: id, caption/.test(err(withStep({ captoin: 'x' }))), 'a misspelt step key is refused with the allowed list');
-  check(/plan\.json: unknown key "stpes"/.test(err({ ...PLAN, stpes: [] })), 'a misspelt top-level key is refused');
-  check(/plan\.json step s02 zoom\.ring: unknown key "width"/.test(err(withStep({ zoom: { ring: { x: 1, y: 1, width: 2, h: 2 } } }))), 'a wrong key in a hand-given ring box is refused');
-  const ok = project({ plan: { ...withStep({ narration: 'Hi', holdFirst: false, chimeAfter: 0.5, mask: { x: 1, y: 1, w: 9, h: 9, text: 'x' } }), intro: { narration: 'Hi' }, subtitle: 'S' } }).build();
-  check(!ok.error, `every documented key is accepted${ok.error ? `: ${ok.error}` : ''}`);
+  check(/plan\.json step 2 \(s02\) zoom: unknown key "holdFirst" — it belongs in the step/.test(err(withStep({ zoom: { ring: true, holdFirst: true } }))), 'holdFirst inside zoom is refused and pointed to the step');
+  check(/plan\.json step 2 \(s02\): unknown key "captoin".*allowed here: id, caption/.test(err(withStep({ captoin: 'x' }))), 'a misspelt step key is refused with the allowed list');
+  const { steps, ...noSteps } = PLAN;
+  const typo = err({ ...noSteps, stpes: steps });
+  check(/unknown key "stpes".*allowed here: .*steps/.test(typo) && /"steps" must be a list/.test(typo), 'a misspelt "steps" is named as an unknown key');
+  check(/plan\.json step 2 \(s02\) zoom\.ring: unknown key "width"/.test(err(withStep({ zoom: { ring: { x: 1, y: 1, width: 2, h: 2 } } }))), 'a wrong key in a hand-given ring box is refused');
+  // Wrong shapes would also do nothing — a mask given as a list would leave the private text uncovered.
+  check(/step 2 \(s02\) mask: must be an object/.test(err(withStep({ mask: [{ x: 1, y: 1, w: 2, h: 2, text: 'x' }] }))), 'a mask given as a list is refused');
+  check(/step 2 \(s02\) zoom\.ring: must be an object/.test(err(withStep({ zoom: { ring: [600, 100, 120, 40] } }))), 'a ring box given as a list is refused');
+  check(/step 2 \(s02\) zoom: must be an object/.test(err(withStep({ zoom: 1.6 }))), 'zoom given as a number is refused');
+  check(/plan\.json intro: must be an object \{narration\}/.test(err({ ...PLAN, intro: 'Welcome' })), 'intro given as text is refused');
+  check(/plan\.json step 1: must be an object/.test(err({ ...PLAN, steps: [null, ...PLAN.steps.slice(1)] })), 'a null step is refused with a plan.json message');
+  const both = err(withStep({ captoin: 'x', zoom: { ring: true, holdFirst: true } }));
+  check(/captoin/.test(both) && /holdFirst/.test(both), 'every unknown key is reported at once');
+  const ok = project({ plan: {
+    ...withStep({ narration: 'Hi', holdFirst: false, chimeAfter: 0.5, _note: 'kept as a note',
+      zoom: { ring: true, scale: 1.4, at: 0.3, x: 600, y: 100 },
+      mask: { x: 1, y: 1, w: 9, h: 9, text: 'x', after: 0, fontSize: 15, align: 'left', bg: '#fff', color: '#000' } }),
+    intro: { narration: 'Hi' }, outro: { title: 'Done', line: 'L', narration: 'Bye' }, subtitle: 'S', _comment: 'c' } }).build();
+  check(!ok.error, `every documented key (and _notes) is accepted${ok.error ? `: ${ok.error}` : ''}`);
 }
 
 if (failed) {
