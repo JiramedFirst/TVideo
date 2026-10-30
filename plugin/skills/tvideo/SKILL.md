@@ -52,8 +52,7 @@ in your first line, so a misread is caught before any work.
    rebuild rewrites them with the narrated timings, and the captions-only render
    needs its own.
 3. `node build.mjs` once *before* writing narration: a plan/timeline mismatch must
-   fail here, not after TTS credits are spent. Then `npm i -D @hyperframes/core` in
-   the clip project, so the music dips under the voice (`references/editing.md`, Music).
+   fail here, not after TTS credits are spent.
 4. `references/narration.md`. Re-check the lines against the Phase 1 safety rules:
    the voice must not say a value that is masked on screen.
 5. Phase 5 steps 3–4, then Phase 6 steps 1–3 — in step 3 use

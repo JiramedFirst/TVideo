@@ -438,6 +438,15 @@ if (music && Object.keys(voices).length) {
   if (!carve) console.warn('! narration + music but no carve.mjs found — run `npx hyperframes skills update hyperframes-audio`, then rebuild.');
   else {
     try {
+      // The CLI doesn't ship core, so install it once here, pinned to the CLI that renders this project.
+      if (!existsSync('node_modules/@hyperframes/core/package.json')) {
+        // shell on Windows only: npx/npm are .cmd files there, which execFile can't start directly.
+        const sh = { shell: process.platform === 'win32' };
+        const v = execFileSync('npx', ['hyperframes', '--version'], { ...sh, encoding: 'utf8' }).trim().split('\n').pop();
+        if (!/^\d+\.\d+\.\d+[\w.-]*$/.test(v)) throw new Error(`unexpected hyperframes --version: ${v}`);
+        console.log(`installing @hyperframes/core@${v} for the music carve…`);
+        execFileSync('npm', ['i', '-D', `@hyperframes/core@${v}`], { ...sh, stdio: 'inherit' });
+      }
       execFileSync('node', [carve, '--comp', 'index.html', '--bed', 'music-bed'], { stdio: 'inherit' });
     } catch {
       console.warn('! carve failed — `npm i -D @hyperframes/core` in this project, then rebuild.');

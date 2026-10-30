@@ -5,7 +5,7 @@
 //
 //   node tests/build.test.mjs
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -53,8 +53,8 @@ function project({ plan = PLAN, timeline = TIMELINE, clicks = CLICKS, voices, co
   return {
     dir,
     put,
-    build() {
-      const r = spawnSync('node', ['build.mjs'], { cwd: dir, encoding: 'utf8' });
+    build(env) {
+      const r = spawnSync('node', ['build.mjs'], { cwd: dir, encoding: 'utf8', env: env && { ...process.env, ...env } });
       if (r.status !== 0) return { error: r.stderr };
       // index.html hosts one sub-composition per scene: compositions/<id>.html.
       const scene = (id) => {
@@ -190,6 +190,35 @@ check(/only 0 tap/.test(project({ clicks: [] }).build().error ?? ''), 'ring: tru
   check(refused({ glow2: { color: '' } }, /color must be a CSS colour/), 'an empty glow2 colour is refused');
   check(refused({ glowAt: 0 }, /glowAt must be \[x, y\]/), 'a falsy glowAt is refused, not ignored');
   check(/brand must be an object/.test(project({ config: { brand: 'purple' } }).build().error ?? ''), 'a theme name put in brand is refused');
+}
+
+// Narration + music: build.mjs installs @hyperframes/core (pinned to the CLI) before the carve, once.
+// A fake HOME holds a carve.mjs that needs core; fake npx/npm on PATH stand in for the network.
+if (process.platform !== 'win32') {
+  const home = mkdtempSync(join(tmpdir(), 'tvideo-home-'));
+  const bin = mkdtempSync(join(tmpdir(), 'tvideo-bin-'));
+  const scripts = join(home, '.claude/skills/hyperframes-audio/scripts');
+  mkdirSync(scripts, { recursive: true });
+  writeFileSync(join(scripts, 'carve.mjs'), "import { existsSync, writeFileSync } from 'node:fs';\nif (!existsSync('node_modules/@hyperframes/core/package.json')) process.exit(1);\nwriteFileSync('carved', '');\n");
+  writeFileSync(join(bin, 'npx'), '#!/bin/sh\necho "npm warn noise"\necho "${FAKE_VERSION:-0.8.217}"\n', { mode: 0o755 });
+  writeFileSync(join(bin, 'npm'), '#!/bin/sh\necho "$*" >> npm.log\n[ -n "$FAKE_NPM_FAIL" ] && exit 1\nmkdir -p node_modules/@hyperframes/core && echo {} > node_modules/@hyperframes/core/package.json\n', { mode: 0o755 });
+  const env = { HOME: home, PATH: `${bin}:${process.env.PATH}` };
+  const narrated = () => {
+    const p = project({ voices: { s03: { path: 'assets/v.mp3', duration: 6 } }, config: { music: { src: 'assets/m.mp3' } } });
+    writeFileSync(join(p.dir, 'assets/m.mp3'), '');
+    return p;
+  };
+  const npmLog = (p) => (existsSync(join(p.dir, 'npm.log')) ? readFileSync(join(p.dir, 'npm.log'), 'utf8').trim().split('\n') : []);
+  const p = narrated();
+  p.build(env);
+  check(npmLog(p).join() === 'i -D @hyperframes/core@0.8.217' && existsSync(join(p.dir, 'carved')), 'missing core is installed at the CLI version, then carved');
+  p.build(env);
+  check(npmLog(p).length === 1, 'core already present is not installed again');
+  const bad = narrated().build({ ...env, FAKE_NPM_FAIL: '1' });
+  check(bad.html && /carve failed/.test(bad.warnings), 'a failed install warns and the build still succeeds');
+  const odd = narrated();
+  const r = odd.build({ ...env, FAKE_VERSION: '--force' });
+  check(r.html && /carve failed/.test(r.warnings) && npmLog(odd).length === 0, 'an unexpected version string is never passed to npm');
 }
 
 if (failed) {
