@@ -105,13 +105,19 @@ export const pendingClicks: Promise<void>[] = [];
 // (a text field, once the NEXT tap navigates away) wasn't removed by its own click.
 const nextTapAt = new WeakMap<Click, number>();
 
-/** Glide to `target`, pause so the viewer sees where, then click it. */
-export async function tap(page: Page, target: Locator): Promise<void> {
+/** Glide to `target` and log a click there (sound + ring) without clicking — for mocked native widgets. */
+export async function logClick(page: Page, target: Locator): Promise<Click> {
   const prev = clickLog.at(-1);
   if (prev && !nextTapAt.has(prev)) nextTapAt.set(prev, Date.now());
   const box = await pointAt(page, target);
   const click: Click = { t: Date.now(), ...(box && { box }) };
   clickLog.push(click);
+  return click;
+}
+
+/** Glide to `target`, pause so the viewer sees where, then click it. */
+export async function tap(page: Page, target: Locator): Promise<void> {
+  const click = await logClick(page, target);
   await target.click();
   // Not awaited: a control that stays (a text field) would otherwise stall every
   // tap for the whole timeout. 3 s covers a navigation or a menu closing.
