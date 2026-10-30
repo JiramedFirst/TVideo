@@ -98,12 +98,36 @@ export async function pointAt(page: Page, target: Locator): Promise<Box | null> 
  * BEFORE the click (holdFirst). createTimeline resets these; save() awaits
  * `pendingClicks` so every `gone` is settled before clicks.json is written.
  */
-export type Click = { t: number; box?: Box; gone?: boolean };
+export type Click = { t: number; box?: Box; gone?: boolean; moved?: boolean };
 export const clickLog: Click[] = [];
 export const pendingClicks: Promise<void>[] = [];
 // When the next tap began, per click: a control that disappears only after that
 // (a text field, once the NEXT tap navigates away) wasn't removed by its own click.
 const nextTapAt = new WeakMap<Click, number>();
+const targets = new WeakMap<Click, Locator>();
+
+/**
+ * At a step's end: mark taps since `from` whose control is still there but no
+ * longer where it was clicked (the page scrolled). The editor's end-of-step still
+ * would put their ring on whatever moved into that spot, so it holds the frame of
+ * the tap instead (holdFirst).
+ */
+export async function markMoved(from: number): Promise<void> {
+  await Promise.all(clickLog.slice(from).map(async (c) => {
+    const loc = targets.get(c);
+    // count() first: boundingBox() would wait out its timeout for a control that is gone.
+    if (!c.box || !loc || (await loc.count().catch(() => 0)) !== 1) return;
+    const b = await loc.boundingBox({ timeout: 500 }).catch(() => null);
+    if (!b) return;
+    // Moved = both edges on an axis shifted (a scroll moves all four); a control that only
+    // resized in place ("Save" → "Saving…") keeps one edge, even if the page also scrolled the other way.
+    const off = (a: number, z: number) => Math.abs(a - z) > 4;
+    const [l, t] = [c.box.x - c.box.w / 2, c.box.y - c.box.h / 2];
+    const h = off(b.x, l) && off(b.x + b.width, l + c.box.w);
+    const v = off(b.y, t) && off(b.y + b.height, t + c.box.h);
+    if (h || v) c.moved = true;
+  }));
+}
 
 /** Glide to `target` and log a click there (sound + ring) without clicking — for mocked native widgets. */
 export async function logClick(page: Page, target: Locator): Promise<Click> {
@@ -112,6 +136,7 @@ export async function logClick(page: Page, target: Locator): Promise<Click> {
   const box = await pointAt(page, target);
   const click: Click = { t: Date.now(), ...(box && { box }) };
   clickLog.push(click);
+  targets.set(click, target);
   return click;
 }
 

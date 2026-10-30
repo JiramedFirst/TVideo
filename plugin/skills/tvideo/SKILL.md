@@ -203,7 +203,8 @@ are already good captions; copy them over.
 1. Add per step as needed (details in `references/editing.md`):
    - `zoom: true` — zoom in and ring the step's first `tap`. The box comes from
      the recorder, the zoom centres on it, and when that control vanished after
-     the click (it navigated away) the edit shows the pre-click frame first
+     the click (it navigated away) or moved (the page scrolled) the edit plays the
+     step up to that click, freezes on it with the ring, then plays on
      (`holdFirst`, automatic). `zoom {scale, at, ring: 2}` rings the 2nd tap;
      `holdFirst: false/true` overrides the automatic choice;
    - `mask {x,y,w,h,text,after}` to cover a value that must not ship;

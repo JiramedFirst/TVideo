@@ -100,7 +100,7 @@ const zoomOk = (scene, id) => {
     'scene hosts meet exactly: intro → steps → outro → root end');
   // Non-zero scene-local offsets, and the last clip of a step ends on the scene's end.
   const end = (sc, id) => ms(attr(sc, id, 'data-start')) + ms(attr(sc, id, 'data-duration'));
-  check(ms(attr(s02, 'v-s02', 'data-start')) > 0 && attr(s02, 'v-s02', 'data-start') === attr(s02, 'h-s02', 'data-duration'), 'holdFirst: the action starts where the still ends (local time)');
+  check(ms(attr(s02, 'v-s02', 'data-start')) === ms(attr(s02, 'h-s02', 'data-start')) + ms(attr(s02, 'h-s02', 'data-duration')), 'holdFirst: the action starts where the still ends (local time)');
   check(ms(attr(s03, 'h-s03', 'data-start')) > 0 && attr(s03, 'h-s03', 'data-start') === attr(s03, 'v-s03', 'data-duration'), 'default: the still starts where the action ends (local time)');
   check(attr(s03, 'ring-s03', 'data-start') === attr(s03, 'h-s03', 'data-start'), 'ring starts with the still (local time)');
   check(end(s02, 'v-s02') === ms(attr(s02, 'cap-s02', 'data-duration')) && end(s03, 'h-s03') === ms(attr(s03, 'cap-s03', 'data-duration'))
@@ -109,10 +109,12 @@ const zoomOk = (scene, id) => {
   // auto-ring: s02's ring = its click box, padded 6 px, scaled to the stage
   check(attr(s02, 'ring-s02', 'style')?.startsWith(`left:${(600 - 60 - 6) * K}px;top:${(100 - 20 - 6) * K}px`), 'ring: true rings the click box');
   check(Boolean(attr(s03, 'ring-s03', 'style')), 'zoom: {ring: true} rings too');
-  // auto-holdFirst: s02's control was gone after the click → still first, sampled
-  // just before the click; the action starts there too (no jump back).
-  // Scene-local times: 0 is the step's first frame.
-  check(attr(s02, 'h-s02', 'data-start') === '0' && attr(s02, 'cap-s02', 'data-start') === '0', 'gone click → holdFirst (still first)');
+  // auto-holdFirst: s02's control was gone after the click → the footage before the
+  // click plays (#4), then the still sampled just before the click, then the click,
+  // from that same moment (no jump back). Scene-local times: 0 is the step's first frame.
+  check(attr(s02, 'vpre-s02', 'data-start') === '0' && attr(s02, 'vpre-s02', 'data-media-start') === '3'
+    && attr(s02, 'vpre-s02', 'data-duration') === attr(s02, 'h-s02', 'data-start') && attr(s02, 'h-s02', 'data-start') === '0.65'
+    && attr(s02, 'v-s02', 'data-media-start') === '3.65' && attr(s02, 'cap-s02', 'data-start') === '0', 'gone click → holdFirst: footage before the click, then the still, then the click');
   check(attr(s02, 'h-s02', 'src') === 'assets/holds/s02-3.65.png', 'holdFirst still = click − 0.15 s');
   check(attr(s02, 'v-s02', 'data-media-start') === '3.65', 'holdFirst action starts at the same moment');
   // s03's control stayed → default: action, then the settled end state.
@@ -260,6 +262,36 @@ if (process.platform !== 'win32') {
       mask: { x: 1, y: 1, w: 9, h: 9, text: 'x', after: 0, fontSize: 15, align: 'left', bg: '#fff', color: '#000' } }),
     intro: { narration: 'Hi' }, outro: { title: 'Done', line: 'L', narration: 'Bye' }, subtitle: 'S', _comment: 'c' } }).build();
   check(!ok.error, `every documented key (and _notes) is accepted${ok.error ? `: ${ok.error}` : ''}`);
+}
+
+// #4: ringing the Nth tap with holdFirst keeps the taps before it on screen.
+// #2: a ringed control that moved after its tap (page scrolled) → holdFirst, with a note.
+{
+  const clicks = [...CLICKS, { ms: 8000, box: { x: 300, y: 500, w: 100, h: 40 }, moved: true }];
+  const plan = { ...PLAN, steps: PLAN.steps.map((s) => (s.id === 's03' ? { ...s, zoom: { ring: 2 }, mask: { x: 1, y: 1, w: 9, h: 9, text: 'x' } } : s)) };
+  const p = project({ plan, clicks });
+  const { scene, warnings, error } = p.build();
+  check(!error, `ring: 2 on a moved control builds${error ? `: ${error}` : ''}`);
+  const s03 = scene('step-s03');
+  check(attr(s03, 'vpre-s03', 'data-media-start') === '6' && attr(s03, 'h-s03', 'data-start') === '1.85' && attr(s03, 'v-s03', 'data-media-start') === '7.85',
+    'ring: 2 + holdFirst: the first tap plays, the still is at the second tap');
+  check(/step s03: the ringed control moved after its tap — holding the frame of the tap/.test(warnings), 'a moved ringed control turns holdFirst on, with a note');
+  check(attr(s03, 'mask-s03', 'data-start') === '0', 'a mask with no after covers the footage before the still too');
+  const rStart = ms(attr(s03, 'ring-s03', 'data-start')), hS = ms(attr(s03, 'h-s03', 'data-start'));
+  check(rStart >= hS && rStart + ms(attr(s03, 'ring-s03', 'data-duration')) <= hS + ms(attr(s03, 'h-s03', 'data-duration')), 'the ring shows only over the still');
+  // A mask's `after` is source time from the step start in every mode, so turning holdFirst on
+  // never starts it after the text it covers: s03 src 6.0, after 0.3 → 0.3 s into the footage before the still.
+  const masked = project({ plan: { ...plan, steps: plan.steps.map((s) => (s.id === 's03' ? { ...s, mask: { ...s.mask, after: 0.3 } } : s)) }, clicks }).build();
+  check(attr(masked.scene('step-s03'), 'mask-s03', 'data-start') === '0.3', 'mask.after counts from the step start under holdFirst too');
+  // Narration with sub-millisecond lengths: the still must end exactly where the click clip starts.
+  const odd = project({ plan, clicks, voices: { s01: { path: 'assets/v.mp3', duration: 1.0004 }, s03: { path: 'assets/v.mp3', duration: 6.0004 } } }).build().scene('step-s03');
+  check(ms(attr(odd, 'h-s03', 'data-start')) + ms(attr(odd, 'h-s03', 'data-duration')) === ms(attr(odd, 'v-s03', 'data-start')), 'the still meets the click clip with no 1 ms gap or overlap');
+  // holdFirst with no tap to anchor on (a hand-given ring box): the still opens the step and must be masked.
+  const noTap = project({ plan: { ...PLAN, steps: PLAN.steps.map((s) => (s.id === 's01' ? { ...s, holdFirst: true, zoom: { ring: { x: 50, y: 50, w: 20, h: 20 } }, mask: { x: 1, y: 1, w: 9, h: 9, text: 'x' } } : s)) } }).build().scene('step-s01');
+  check(attr(noTap, 'h-s01', 'data-start') === '0' && attr(noTap, 'mask-s01', 'data-start') === '0', 'holdFirst without a tap: the mask covers the still from the start');
+  const kept = project({ plan: { ...plan, steps: plan.steps.map((s) => (s.id === 's03' ? { ...s, holdFirst: false } : s)) }, clicks }).build();
+  check(/! step s03: the ringed control moved after its tap .* holdFirst: false/.test(kept.warnings) && !kept.scene('step-s03').includes('vpre-s03'),
+    'holdFirst: false on a moved control is kept, with a warning');
 }
 
 if (failed) {
