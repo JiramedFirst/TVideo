@@ -86,6 +86,9 @@ const zoomOk = (scene, id) => {
   check(ids.every((id) => scene(id).includes(`<div id="${id}" data-composition-id="${id}"`)), 'one scene file per step, plus intro and outro');
   check(ids.every((id) => html.includes(`<div id="${id}" data-composition-id="${id}" data-composition-src="compositions/${id}.html"`)), 'index.html hosts every scene');
   check(!/fromTo\('#intro-(title|sub)'/.test(scene('intro')) && scene('intro').includes('id="intro-title"'), 'intro title is on screen from frame 0 (no fade-in)');
+  // #6: a hard ease-out over a long travel read as a stutter; the intro moves gently.
+  const withLogo = project({ voices: {}, config: { logo: 'assets/footage.mp4' } }).build().scene('intro');
+  check(/fromTo\('#intro-logo', \{ y: 10,.*ease: 'sine\.inOut' \}, 0\.1\)/.test(withLogo) && !/ease: 'power/.test(withLogo), 'intro logo and rule ease in gently (sine, 10 px)');
   check(/\.credit \{[^}]*font-size: 28px/.test(scene('outro')), 'music credit is 28 px (type floor)');
   const hs = hosts(html);
   const rootEnd = ms(/data-composition-id="main"[^>]*data-duration="([\d.]+)"/.exec(html)?.[1]);
