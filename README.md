@@ -38,6 +38,12 @@ log, so the captions, zooms, highlights and click sounds follow the new footage 
 Shortcuts: `/tvideo setup` only checks and installs the toolchain (Chromium comes with the recorder), `/tvideo record` makes a clip without asking
 about narration, and `/tvideo dub` adds narration to a clip you already made.
 
+Date and month pickers and file-upload dialogs open as separate OS windows that a screen recording never shows. The
+recorder draws a look-alike in the page instead (Chrome's date/month picker, the macOS Open panel), moves the
+cursor through it, then sets the real value or uploads the real file. The look comes from a `theme` preset (`navy`,
+`purple`, `teal`, `blue`) or your own brand colours and logo. A mistake in the clip's `plan.json`, such as a misspelt
+key, stops the build with the step and the fix instead of being ignored.
+
 Captions work in any language. A Thai font is bundled. Rendering is fully local; a HeyGen account or a Google Cloud API key is only needed for the optional narration. Stuck? See [troubleshooting](plugin/skills/tvideo/references/troubleshooting.md).
 
 ## Requirements
@@ -50,6 +56,8 @@ Captions work in any language. A Thai font is bundled. Rendering is fully local;
 
 The recorder reads credentials from environment variables only (`TV_USERNAME`, `TV_PASSWORD`). For SSO or captcha
 logins, sign in once by hand and save the session (`npx playwright codegen --save-storage=.auth/state.json <url>`).
+The Google narration key never goes into chat: put `GOOGLE_TTS_API_KEY=…` in `~/.config/tvideo/google-tts.env`, a
+file only you can read (`chmod 600`), and the narration script reads it from there.
 
 Recording drives the app for real: forms submit and emails go out. Use staging and a fictional demo account.
 Claude asks before recording against a shared environment and never completes a real payment. It can mask on-screen
