@@ -146,7 +146,8 @@ async function run(page: Page, input: Locator, kind: 'date' | 'month', value: st
     await tap(page, pop.locator(`[data-k="${value}"]`));
     if (!REHEARSE) await page.waitForTimeout(250); // let the viewer see the blue selection
   } finally {
-    await pop.evaluate((h) => h.remove()).catch(() => {});
+    // evaluateAll doesn't wait for the element; best effort so a tap's real error isn't replaced
+    await pop.evaluateAll((els) => els.forEach((e) => e.remove())).catch(() => {});
   }
   await input.fill(value);
 }
