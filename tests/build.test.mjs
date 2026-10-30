@@ -5,7 +5,7 @@
 //
 //   node tests/build.test.mjs
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -206,19 +206,24 @@ if (process.platform !== 'win32') {
   const narrated = () => {
     const p = project({ voices: { s03: { path: 'assets/v.mp3', duration: 6 } }, config: { music: { src: 'assets/m.mp3' } } });
     writeFileSync(join(p.dir, 'assets/m.mp3'), '');
+    writeFileSync(join(p.dir, 'package.json'), '{}');
     return p;
   };
   const npmLog = (p) => (existsSync(join(p.dir, 'npm.log')) ? readFileSync(join(p.dir, 'npm.log'), 'utf8').trim().split('\n') : []);
   const p = narrated();
   p.build(env);
-  check(npmLog(p).join() === 'i -D @hyperframes/core@0.8.217' && existsSync(join(p.dir, 'carved')), 'missing core is installed at the CLI version, then carved');
+  check(npmLog(p).join() === 'i -D -E @hyperframes/core@0.8.217' && existsSync(join(p.dir, 'carved')), 'missing core is installed at the CLI version, then carved');
   p.build(env);
   check(npmLog(p).length === 1, 'core already present is not installed again');
   const bad = narrated().build({ ...env, FAKE_NPM_FAIL: '1' });
-  check(bad.html && /carve failed/.test(bad.warnings), 'a failed install warns and the build still succeeds');
+  check(bad.html && /could not install @hyperframes\/core/.test(bad.warnings), 'a failed install warns and the build still succeeds');
+  const bare = narrated();
+  rmSync(join(bare.dir, 'package.json'));
+  const nb = bare.build(env);
+  check(nb.html && npmLog(bare).length === 0 && /needs a package\.json/.test(nb.warnings), 'no package.json here: npm is not run (it would edit a parent project)');
   const odd = narrated();
   const r = odd.build({ ...env, FAKE_VERSION: '--force' });
-  check(r.html && /carve failed/.test(r.warnings) && npmLog(odd).length === 0, 'an unexpected version string is never passed to npm');
+  check(r.html && /unexpected hyperframes --version: --force/.test(r.warnings) && npmLog(odd).length === 0, 'an unexpected version string is never passed to npm');
 }
 
 if (failed) {
