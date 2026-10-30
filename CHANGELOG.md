@@ -17,8 +17,8 @@
 - Fix: with narration + music, `build.mjs` installs `@hyperframes/core` (pinned to the Hyperframes CLI version) before
   the carve, so the music dips under the voice without a manual `npm i`. It installs only into the clip's own
   `package.json`, never a parent project (#7).
-- Fix: the intro logo and title rule ease in gently (`sine.inOut`, 10 px travel, logo from 0.1 s) instead of a hard
-  `power3.out` pop that read as a stutter (#6).
+- Fix: the intro logo eases in over 10 px with `sine.inOut` (0.9 s from 0.1 s; was a 30 px `power3.out` pop) and the
+  title rule follows once it has settled (`sine.inOut` 0.7 s from 1.0 s; was `power2.out` 0.5 s from 0.9 s) (#6).
 - Recorder `teardown.ts` saves every clip folder this run filmed (`video.webm` + `timeline.json`) from each project's
   `outputDir`, whatever its name, into `recordings/` next to the config (or `TV_RECORDINGS_DIR`, relative to the config),
   and warns about a filmed clip with no video; `recording.md` explains running the clips inside an existing Playwright

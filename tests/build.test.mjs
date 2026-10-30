@@ -87,8 +87,12 @@ const zoomOk = (scene, id) => {
   check(ids.every((id) => html.includes(`<div id="${id}" data-composition-id="${id}" data-composition-src="compositions/${id}.html"`)), 'index.html hosts every scene');
   check(!/fromTo\('#intro-(title|sub)'/.test(scene('intro')) && scene('intro').includes('id="intro-title"'), 'intro title is on screen from frame 0 (no fade-in)');
   // #6: a hard ease-out over a long travel read as a stutter; the intro moves gently.
-  const withLogo = project({ voices: {}, config: { logo: 'assets/footage.mp4' } }).build().scene('intro');
-  check(/fromTo\('#intro-logo', \{ y: 10,.*ease: 'sine\.inOut' \}, 0\.1\)/.test(withLogo) && !/ease: 'power/.test(withLogo), 'intro logo and rule ease in gently (sine, 10 px)');
+  // Any existing file passes the logo check; only the intro script text is read.
+  const lb = project({ config: { logo: 'assets/footage.mp4' } }).build();
+  const intro = lb.error ? '' : lb.scene('intro');
+  check(!lb.error, `build with a logo succeeds ${lb.error ?? ''}`);
+  check(intro.includes("{ y: 10, opacity: 0 }, { y: 0, opacity: 1, duration: 0.9, ease: 'sine.inOut' }, 0.1);"), 'intro logo eases in over 10 px (sine, 0.9 s from 0.1 s)');
+  check(intro.includes("{ scaleX: 1, duration: 0.7, ease: 'sine.inOut' }, 1.0);"), 'intro rule eases in after the logo has settled');
   check(/\.credit \{[^}]*font-size: 28px/.test(scene('outro')), 'music credit is 28 px (type floor)');
   const hs = hosts(html);
   const rootEnd = ms(/data-composition-id="main"[^>]*data-duration="([\d.]+)"/.exec(html)?.[1]);

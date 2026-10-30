@@ -335,7 +335,7 @@ const scenes = [{
     <div id="intro-rule" class="rule"></div>`,
   tl: [
     logo && "tl.fromTo('#intro-logo', { y: 10, opacity: 0 }, { y: 0, opacity: 1, duration: 0.9, ease: 'sine.inOut' }, 0.1);",
-    "tl.fromTo('#intro-rule', { scaleX: 0 }, { scaleX: 1, duration: 0.7, ease: 'sine.inOut' }, 0.9);",
+    "tl.fromTo('#intro-rule', { scaleX: 0 }, { scaleX: 1, duration: 0.7, ease: 'sine.inOut' }, 1.0);",
   ],
 }];
 steps.forEach((s, i) => scenes.push({
