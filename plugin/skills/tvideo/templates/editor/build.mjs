@@ -15,6 +15,7 @@
 // caption-paced.
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -437,10 +438,37 @@ if (music && Object.keys(voices).length) {
   const carve = [join(homedir(), '.claude/skills/hyperframes-audio/scripts/carve.mjs'), join(homedir(), '.agents/skills/hyperframes-audio/scripts/carve.mjs')].find(existsSync);
   if (!carve) console.warn('! narration + music but no carve.mjs found — run `npx hyperframes skills update hyperframes-audio`, then rebuild.');
   else {
-    try {
-      execFileSync('node', [carve, '--comp', 'index.html', '--bed', 'music-bed'], { stdio: 'inherit' });
-    } catch {
-      console.warn('! carve failed — `npm i -D @hyperframes/core` in this project, then rebuild.');
+    // Resolved the way carve.mjs does: from this project, up through its parents.
+    const hasCore = () => {
+      try {
+        return Boolean(createRequire(join(process.cwd(), 'package.json')).resolve('@hyperframes/core/package.json'));
+      } catch {
+        return false;
+      }
+    };
+    // The CLI doesn't ship core: install it once, pinned to the CLI version. Only with a
+    // package.json here — without one, npm would add it to a parent project instead.
+    let core = hasCore();
+    if (!core && !existsSync('package.json')) console.warn('! music not carved under the voice: no @hyperframes/core and no package.json to install it into — run `npm init -y` in this clip project, then rebuild.');
+    else if (!core) {
+      try {
+        // shell on Windows only: npx/npm are .cmd files there, which execFile can't start directly.
+        const sh = { shell: process.platform === 'win32' };
+        const v = execFileSync('npx', ['hyperframes', '--version'], { ...sh, encoding: 'utf8' }).trim().split('\n').pop();
+        if (!/^\d+\.\d+\.\d+[\w.-]*$/.test(v)) throw new Error(`unexpected hyperframes --version: ${v}`);
+        console.log(`installing @hyperframes/core@${v} for the music carve…`);
+        execFileSync('npm', ['i', '-D', '-E', `@hyperframes/core@${v}`], { ...sh, stdio: 'inherit' });
+        core = hasCore();
+      } catch (e) {
+        console.warn(`! music not carved under the voice: could not install @hyperframes/core (${e.message}) — rebuild to retry.`);
+      }
+    }
+    if (core) {
+      try {
+        execFileSync('node', [carve, '--comp', 'index.html', '--bed', 'music-bed'], { stdio: 'inherit' });
+      } catch {
+        console.warn('! carve failed (see the error above) — the music is not dipped under the voice.');
+      }
     }
   }
 }
