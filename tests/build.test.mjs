@@ -233,6 +233,18 @@ if (process.platform !== 'win32') {
   check(r.html && /unexpected hyperframes --version: --force/.test(r.warnings) && npmLog(odd).length === 0, 'an unexpected version string is never passed to npm');
 }
 
+// #3: a key build.mjs doesn't read is an error that says where it belongs, not a silent no-op.
+{
+  const withStep = (patch) => ({ ...PLAN, steps: PLAN.steps.map((s) => (s.id === 's02' ? { ...s, ...patch } : s)) });
+  const err = (plan) => project({ plan }).build().error ?? '';
+  check(/plan\.json step s02 zoom: unknown key "holdFirst" — it belongs in the step/.test(err(withStep({ zoom: { ring: true, holdFirst: true } }))), 'holdFirst inside zoom is refused and pointed to the step');
+  check(/plan\.json step s02: unknown key "captoin".*allowed here: id, caption/.test(err(withStep({ captoin: 'x' }))), 'a misspelt step key is refused with the allowed list');
+  check(/plan\.json: unknown key "stpes"/.test(err({ ...PLAN, stpes: [] })), 'a misspelt top-level key is refused');
+  check(/plan\.json step s02 zoom\.ring: unknown key "width"/.test(err(withStep({ zoom: { ring: { x: 1, y: 1, width: 2, h: 2 } } }))), 'a wrong key in a hand-given ring box is refused');
+  const ok = project({ plan: { ...withStep({ narration: 'Hi', holdFirst: false, chimeAfter: 0.5, mask: { x: 1, y: 1, w: 9, h: 9, text: 'x' } }), intro: { narration: 'Hi' }, subtitle: 'S' } }).build();
+  check(!ok.error, `every documented key is accepted${ok.error ? `: ${ok.error}` : ''}`);
+}
+
 if (failed) {
   console.error(`\n${failed} check(s) failed`);
   process.exit(1);

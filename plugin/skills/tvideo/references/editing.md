@@ -11,7 +11,9 @@
   `music {src, volume, credit}` or `null`, `sfx` (false to disable), `lang`,
   `readingCharsPerSec` (≈12 Thai, ≈15 English).
 - `plan.json` — `title`, `subtitle`, `footage`, `outro {title, line}`, and
-  `steps[]` in the same order as the recorder's `tl.step`s.
+  `steps[]` in the same order as the recorder's `tl.step`s. A key `build.mjs` doesn't
+  read (a typo, or one in the wrong object such as `holdFirst` inside `zoom`) fails the
+  build with the step and where the key belongs.
 - `timeline.json`, `clicks.json` — from the recorder via `scripts/import.mjs` (re-timed to the footage).
 - `voices.json` — optional, from `scripts/voice.mjs`.
 

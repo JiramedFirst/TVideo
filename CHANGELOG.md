@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix: `build.mjs` refuses plan.json keys it doesn't read (typos, or a key in the wrong object such as `holdFirst`
+  inside `zoom`), naming the step and where the key belongs, instead of ignoring them (#3).
 - Safety: Phase 1 now checks the seeds/fixtures behind the recorded screens for real personal data and seeds a
   fictional dataset for the recording (#13).
 - Shortcuts `/tvideo setup | record | dub`: preflight only, a clip without narration, or narration on an existing

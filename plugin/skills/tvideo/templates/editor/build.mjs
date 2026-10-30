@@ -26,6 +26,35 @@ const plan = readJson('plan.json', null);
 if (!plan) throw new Error('plan.json missing — copy plan.example.json and edit it.');
 const timeline = readJson('timeline.json', null);
 if (!timeline) throw new Error('timeline.json missing — import the recording first (scripts/new-clip.mjs or import.mjs).');
+// Only these keys are read, so a typo or a key in the wrong object would silently do nothing.
+const KEYS = {
+  'the top level': ['title', 'subtitle', 'footage', 'intro', 'outro', 'steps'],
+  intro: ['narration'],
+  outro: ['title', 'line', 'narration'],
+  'the step': ['id', 'caption', 'narration', 'zoom', 'holdFirst', 'mask', 'chimeAfter'],
+  zoom: ['scale', 'at', 'x', 'y', 'ring'],
+  'zoom.ring': ['x', 'y', 'w', 'h'],
+  mask: ['x', 'y', 'w', 'h', 'text', 'after', 'fontSize', 'align', 'bg', 'color'],
+};
+const checkKeys = (obj, kind, where) => {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return;
+  for (const k of Object.keys(obj)) {
+    if (KEYS[kind].includes(k)) continue;
+    const home = Object.keys(KEYS).filter((o) => KEYS[o].includes(k));
+    throw new Error(`plan.json${where && ` ${where}`}: unknown key "${k}"${home.length ? ` — it belongs in ${home.join(' or ')}` : ''} (allowed here: ${KEYS[kind].join(', ')}).`);
+  }
+};
+if (!Array.isArray(plan.steps)) throw new Error('plan.json: "steps" must be a list of steps.');
+checkKeys(plan, 'the top level', '');
+checkKeys(plan.intro, 'intro', 'intro');
+checkKeys(plan.outro, 'outro', 'outro');
+plan.steps.forEach((s, i) => {
+  const w = `step ${s?.id ?? i + 1}`;
+  checkKeys(s, 'the step', w);
+  checkKeys(s?.zoom, 'zoom', `${w} zoom`);
+  checkKeys(s?.zoom?.ring, 'zoom.ring', `${w} zoom.ring`);
+  checkKeys(s?.mask, 'mask', `${w} mask`);
+});
 // Step ids become file names (compositions/step-<id>.html) and element ids, so they
 // must be safe there and unique even on a case-insensitive file system.
 const badIds = plan.steps.map((s) => s.id).filter((id) => id == null || !/^[A-Za-z0-9_-]+$/.test(String(id)));
