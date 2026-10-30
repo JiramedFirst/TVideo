@@ -10,8 +10,11 @@
   in 1920×1080 canvas pixels; omitted parts keep the defaults. `font.family` + `font.files` (weight → file), `logo`, `logoAlt`,
   `music {src, volume, credit}` or `null`, `sfx` (false to disable), `lang`,
   `readingCharsPerSec` (≈12 Thai, ≈15 English).
-- `plan.json` — `title`, `subtitle`, `footage`, `outro {title, line}`, and
-  `steps[]` in the same order as the recorder's `tl.step`s.
+- `plan.json` — `title`, `subtitle`, `footage`, `intro {narration}`, `outro {title, line,
+  narration}`, and `steps[]` in the same order as the recorder's `tl.step`s. A key the
+  scripts don't read (a typo, or one in the wrong object such as `holdFirst` inside
+  `zoom`) or a wrong shape (a `mask` given as a list) fails the build, naming the step
+  and where the key belongs. Keys starting with `_` are notes and are ignored.
 - `timeline.json`, `clicks.json` — from the recorder via `scripts/import.mjs` (re-timed to the footage).
 - `voices.json` — optional, from `scripts/voice.mjs`.
 

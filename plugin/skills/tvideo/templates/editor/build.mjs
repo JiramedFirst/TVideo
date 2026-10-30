@@ -26,6 +26,50 @@ const plan = readJson('plan.json', null);
 if (!plan) throw new Error('plan.json missing — copy plan.example.json and edit it.');
 const timeline = readJson('timeline.json', null);
 if (!timeline) throw new Error('timeline.json missing — import the recording first (scripts/new-clip.mjs or import.mjs).');
+// Only these keys are read (here and by voice.mjs), so a typo, a key in the wrong object or a
+// wrong shape (a mask given as a list) would silently do nothing. Keys starting with _ are notes.
+const KEYS = {
+  'the top level': ['title', 'subtitle', 'footage', 'intro', 'outro', 'steps'],
+  intro: ['narration'],
+  outro: ['title', 'line', 'narration'],
+  'the step': ['id', 'caption', 'narration', 'zoom', 'holdFirst', 'mask', 'chimeAfter'],
+  zoom: ['scale', 'at', 'x', 'y', 'ring'],
+  'zoom.ring': ['x', 'y', 'w', 'h'],
+  mask: ['x', 'y', 'w', 'h', 'text', 'after', 'fontSize', 'align', 'bg', 'color'],
+};
+const planProblems = [];
+const SHORTHAND = { zoom: ' (or true)', 'zoom.ring': ' (or true, or the tap number 1, 2, …)' };
+// Returns whether `val` is an object whose keys could be checked; undefined/null/false = off, as the readers treat them.
+const checkKeys = (val, kind, where) => {
+  if (val == null || val === false) return false;
+  const at = `plan.json${where && ` ${where}`}`;
+  if (typeof val !== 'object' || Array.isArray(val)) {
+    planProblems.push(`${at}: must be an object {${KEYS[kind].join(', ')}}${SHORTHAND[kind] ?? ''}, not ${JSON.stringify(val)}.`);
+    return false;
+  }
+  for (const k of Object.keys(val)) {
+    if (KEYS[kind].includes(k) || k.startsWith('_')) continue;
+    const home = Object.keys(KEYS).filter((o) => KEYS[o].includes(k));
+    planProblems.push(`${at}: unknown key "${k}"${home.length ? ` — it belongs in ${home.join(' or ')}` : ''} (allowed here: ${KEYS[kind].join(', ')}).`);
+  }
+  return true;
+};
+checkKeys(plan, 'the top level', '');
+checkKeys(plan.intro, 'intro', 'intro');
+checkKeys(plan.outro, 'outro', 'outro');
+if (!Array.isArray(plan.steps)) planProblems.push('plan.json: "steps" must be a list of steps.');
+else plan.steps.forEach((s, i) => {
+  // By position: ids may be missing or numeric, so an id alone could name the wrong step.
+  const w = `step ${i + 1}${s?.id != null && s.id !== '' ? ` (${s.id})` : ''}`;
+  if (s == null || s === false) return void planProblems.push(`plan.json ${w}: must be an object {${KEYS['the step'].join(', ')}}, not ${JSON.stringify(s)}.`);
+  if (!checkKeys(s, 'the step', w)) return;
+  // zoom: true/false and ring: true/N are shorthands, not objects.
+  if (typeof s.zoom !== 'boolean') checkKeys(s.zoom, 'zoom', `${w} zoom`);
+  const ring = s.zoom?.ring;
+  if (typeof ring !== 'boolean' && typeof ring !== 'number') checkKeys(ring, 'zoom.ring', `${w} zoom.ring`);
+  checkKeys(s.mask, 'mask', `${w} mask`);
+});
+if (planProblems.length) throw new Error(planProblems.join('\n'));
 // Step ids become file names (compositions/step-<id>.html) and element ids, so they
 // must be safe there and unique even on a case-insensitive file system.
 const badIds = plan.steps.map((s) => s.id).filter((id) => id == null || !/^[A-Za-z0-9_-]+$/.test(String(id)));
