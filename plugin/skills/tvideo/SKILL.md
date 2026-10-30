@@ -94,8 +94,8 @@ Collect, in one short round, what changes the work:
    30–120 s each (sign in, create X, edit/cancel X, download Y…). Ask for the
    order the viewer should watch them in.
 4. **Language** of the UI and captions (`TV_LOCALE`, `lang`), and the **OS and
-   browser** the audience uses — date/month pickers and file dialogs are drawn to
-   look like theirs (`references/recording.md`, native widgets).
+   browser** the audience uses — the date/month picker mocks copy Chrome; tell the
+   user when their audience's picker looks different (`references/recording.md`).
 5. **Brand**: logo file, a `theme` (`navy`, `purple`, `teal`, `blue`) or 1–2 colors,
    or a reference frame to match (see `references/editing.md`), font if the language needs one (bundled
    IBM Plex Sans Thai covers Thai + Latin). Defaults are a neutral navy/green.

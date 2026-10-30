@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { REHEARSE, pointAt, tap } from './cursor';
+import { REHEARSE, clickLog, pointAt, tap } from './cursor';
 
 /**
  * Chrome's native month/date popups are separate OS windows, so Playwright's video
@@ -22,7 +22,7 @@ button{all:unset;box-sizing:border-box;text-align:center;cursor:default}
 button.oth{color:#777}button.off{color:#bbb}
 .hd{left:10px;top:11px;height:24px;line-height:24px;font-weight:700}
 .arr{top:9px;width:28px;height:28px;padding:2px}.arr svg{width:24px;height:24px;stroke:#111;fill:none;stroke-width:1.3}
-.arr.off svg{stroke:#bbb}
+.arr.off svg{stroke:#bbb}.arr.up{left:146px}.arr.down{left:178px}
 .wk,.days{left:10px;display:grid;grid-template-columns:repeat(7,28px);grid-auto-rows:28px;line-height:28px;text-align:center}
 .wk{top:45px;font-weight:700}.days{top:74px}
 .days button{width:28px;height:28px;line-height:28px}
@@ -52,18 +52,25 @@ function mount(el: HTMLInputElement, c: Mount) {
   let picked = el.value;
   const ok = (v: string) => (!el.min || v >= el.min.slice(0, v.length)) && (!el.max || v <= el.max.slice(0, v.length));
 
+  document.querySelector(c.host)?.remove(); // a failed earlier pick must not leave a second host
   const host = document.createElement('div');
   host.id = c.host.slice(1);
-  host.style.cssText = 'position:fixed;left:0;top:0;z-index:2147483645'; // just under the cursor (…647) and its ripple (…646)
+  // just under the cursor (…647) and its ripple (…646); clickable even when a modal disables the body
+  host.style.cssText = 'position:fixed;left:0;top:0;z-index:2147483645;pointer-events:auto';
   const root = host.attachShadow({ mode: 'open' });
-  document.body.append(host);
+  // CSSOM, not a <style> tag: a CSP without 'unsafe-inline' would leave the popup unstyled.
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(c.css);
+  root.adoptedStyleSheets = [sheet];
+  // Inside the field's modal: a <dialog> top layer or a modal's click-outside would block or close it.
+  (el.closest('dialog,[role=dialog]') ?? document.body).append(host);
 
   const cell = (cls: string, txt: string, key: string) =>
     `<button class="${cls}${ok(key) ? '' : ' off'}" ${ok(key) ? '' : 'disabled'} data-k="${key}">${txt}</button>`;
-  const arrow = (dir: number, left: number) => {
-    const t = new Date(view.y, view.m + dir, dir < 0 ? 0 : 1); // last day of the previous month / first of the next
+  const arrow = (dir: number) => {
+    const t = dir < 0 ? new Date(view.y, view.m, 0) : new Date(view.y, view.m + 1, 1); // last day of the previous month / first of the next
     const dis = !ok(iso(t));
-    return `<button class="arr${dis ? ' off' : ''}" ${dis ? 'disabled' : ''} data-dir="${dir}" style="left:${left}px"><svg viewBox="0 0 24 24"><path d="${
+    return `<button class="arr${dis ? ' off' : ''} ${dir < 0 ? 'up' : 'down'}" ${dis ? 'disabled' : ''} data-dir="${dir}"><svg viewBox="0 0 24 24"><path d="${
       dir < 0 ? 'M12 21V4M5 11l7-7 7 7' : 'M12 3v17M5 13l7 7 7-7'}"/></svg></button>`;
   };
 
@@ -84,10 +91,10 @@ function mount(el: HTMLInputElement, c: Mount) {
         return cell(iso(d) === picked ? 'sel' : d.getMonth() !== view.m ? 'oth' : '', String(d.getDate()), iso(d));
       }).join('');
       body = `<div class="hd">${fmt({ month: 'long', year: 'numeric' }).format(new Date(view.y, view.m, 1))} ▾</div>` +
-        arrow(-1, 146) + arrow(1, 178) + `<div class="wk">${wk}</div><div class="days">${days}</div>` +
+        arrow(-1) + arrow(1) + `<div class="wk">${wk}</div><div class="days">${days}</div>` +
         `<div class="ft"><span>${L.clear}</span><span>${L.today}</span></div>`;
     }
-    root.innerHTML = `<style>${c.css}</style><div class="pop ${c.kind}">${body}</div>`;
+    root.innerHTML = `<div class="pop ${c.kind}">${body}</div>`;
     root.querySelectorAll<HTMLElement>('[data-dir]').forEach((a) =>
       a.addEventListener('click', () => { const t = new Date(view.y, view.m + Number(a.dataset.dir), 1); view.y = t.getFullYear(); view.m = t.getMonth(); render(); }));
     root.querySelectorAll<HTMLElement>('[data-k]').forEach((b) =>
@@ -107,28 +114,37 @@ function mount(el: HTMLInputElement, c: Mount) {
 async function run(page: Page, input: Locator, kind: 'date' | 'month', value: string, opts: PickerOptions) {
   const fn = kind === 'date' ? 'pickDate' : 'pickMonth';
   const shape = kind === 'date' ? /^\d{4}-\d{2}-\d{2}$/ : /^\d{4}-\d{2}$/;
-  if (!shape.test(value) || Number.isNaN(Date.parse(kind === 'date' ? value : `${value}-01`))) {
+  const [ty, tm, td = 1] = value.split('-').map(Number);
+  const d = new Date(ty, tm - 1, td); // round-trip: Date.parse would accept 2026-02-30
+  if (!shape.test(value) || d.getMonth() !== tm - 1 || d.getDate() !== td) {
     throw new Error(`${fn}: "${value}" is not ${kind === 'date' ? 'YYYY-MM-DD' : 'YYYY-MM'}`);
   }
-  const { min, max } = await input.evaluate((el: HTMLInputElement) => ({ min: el.min, max: el.max }));
+  const { min, max, type } = await input.evaluate((el: HTMLInputElement) => ({ min: el.min, max: el.max, type: el.type }));
+  if (type !== kind) throw new Error(`${fn}: the field is type="${type}", not type="${kind}"`);
   if ((min && value < min.slice(0, value.length)) || (max && value > max.slice(0, value.length))) {
     throw new Error(`${fn}: ${value} is outside min=${min || '-'} max=${max || '-'}`);
   }
-  await pointAt(page, input);
+  // Log the field as a click (sound + ring) without clicking it: a real click opens the real popup in headed runs.
+  const box = await pointAt(page, input);
+  clickLog.push({ t: Date.now(), ...(box && { box }) });
   const start = await input.evaluate(mount, { kind, locale: opts.locale, labels: opts.labels, host: HOST, css: CSS });
-  const pop = page.locator(HOST); // Playwright's CSS engine pierces the open shadow root
-  const [ty, tm] = value.split('-').map(Number);
-  if (kind === 'date') {
-    const diff = ty * 12 + tm - 1 - (start.y * 12 + start.m);
-    if (Math.abs(diff) > 12) await pop.evaluate((h, a) => (h as unknown as { __go: (y: number, m: number) => void }).__go(a[0], a[1]), [ty, tm - 1]);
-    else for (let i = 0; i < Math.abs(diff); i++) await tap(page, pop.locator(`[data-dir="${Math.sign(diff)}"]`));
-  } else if (ty !== start.y) {
-    // The month picker has no arrows: just re-render on the target year.
-    await pop.evaluate((h, y) => (h as unknown as { __go: (y: number, m: number) => void }).__go(y, 0), ty);
+  // The popup lives in the field's frame; Playwright's CSS engine pierces the open shadow root.
+  const frame = await (await input.elementHandle())!.ownerFrame();
+  const pop = frame!.locator(HOST);
+  try {
+    if (kind === 'date') {
+      const diff = ty * 12 + tm - 1 - (start.y * 12 + start.m);
+      if (Math.abs(diff) > 12) await pop.evaluate((h, a) => (h as unknown as { __go: (y: number, m: number) => void }).__go(a[0], a[1]), [ty, tm - 1]);
+      else for (let i = 0; i < Math.abs(diff); i++) await tap(page, pop.locator(`[data-dir="${Math.sign(diff)}"]`));
+    } else if (ty !== start.y) {
+      // The month picker has no arrows: just re-render on the target year.
+      await pop.evaluate((h, y) => (h as unknown as { __go: (y: number, m: number) => void }).__go(y, 0), ty);
+    }
+    await tap(page, pop.locator(`[data-k="${value}"]`));
+    if (!REHEARSE) await page.waitForTimeout(250); // let the viewer see the blue selection
+  } finally {
+    await pop.evaluate((h) => h.remove()).catch(() => {});
   }
-  await tap(page, pop.locator(`[data-k="${value}"]`));
-  if (!REHEARSE) await page.waitForTimeout(250); // let the viewer see the blue selection
-  await pop.evaluate((h) => h.remove());
   await input.fill(value);
 }
 
