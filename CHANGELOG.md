@@ -17,6 +17,8 @@
 - Fix: with narration + music, `build.mjs` installs `@hyperframes/core` (pinned to the Hyperframes CLI version) before
   the carve, so the music dips under the voice without a manual `npm i`. It installs only into the clip's own
   `package.json`, never a parent project (#7).
+- Recorder `file-dialog.ts`: `pickFiles` draws a macOS-style Open panel listing only the given files, taps through
+  it and uploads them for real via Playwright's file chooser (#5).
 - Recorder `pickers.ts`: `pickDate` / `pickMonth` draw a Chrome-style date/month popup in the page (the real one
   is an OS window the video never shows), tap through it with the cursor and set the real value (#5).
 - Fix: the intro logo eases in over 10 px with `sine.inOut` (0.9 s from 0.1 s; was a 30 px `power3.out` pop) and the

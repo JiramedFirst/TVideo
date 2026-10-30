@@ -106,7 +106,7 @@ try {
   // 4. Recorder helpers that need a browser (native-widget mocks), run from the recorder copy.
   cpSync(join(ROOT, 'tests/recorder'), join(rec, 'checks'), { recursive: true });
   if (spawnSync('npx', ['playwright', 'test', '-c', 'checks/playwright.config.ts'], { cwd: rec, stdio: 'inherit' }).status !== 0) fail('recorder helper checks failed');
-  ok('recorder helpers: pickers');
+  ok('recorder helpers: pickers, file dialog');
   console.log(`\nsmoke passed — work dir ${work}`);
 } finally {
   server.close();
